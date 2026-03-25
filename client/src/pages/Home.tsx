@@ -124,7 +124,7 @@ export default function Home() {
       {/* Footer */}
       <footer className="bg-slate-900 text-slate-300 py-8">
         <div className="max-w-6xl mx-auto px-4 text-center">
-          <p>&copy; 2026 Page Audit Agent. Powered by Manus AI.</p>
+          <p>&copy; 2026 Page Audit Agent.</p>
         </div>
       </footer>
     </div>
