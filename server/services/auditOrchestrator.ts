@@ -1,8 +1,4 @@
-import { analyzeLLMFriendly } from "../auditors/llmFriendly";
-import { analyzeW3CCompliance } from "../auditors/w3cCompliance";
-import { analyzeSEO } from "../auditors/seo";
-import { analyzeSemanticHtml } from "../auditors/semanticHtml";
-import { analyzeAccessibility } from "../auditors/accessibility";
+import { analyzeAll } from "../auditors/auditors";
 
 export interface AuditIssue {
   severity: "error" | "warning" | "info";
@@ -16,6 +12,11 @@ export interface CriterionResult {
   issues: AuditIssue[];
 }
 
+export interface docResult {
+  size: number;
+  recommendation: string;
+}
+
 export interface AuditReport {
   overallScore: number;
   llmFriendly: CriterionResult;
@@ -23,29 +24,29 @@ export interface AuditReport {
   seo: CriterionResult;
   semanticHtml: CriterionResult;
   accessibility: CriterionResult;
+  docSize: docResult;
 }
 
-/**
- * Orchestrates all audit analyzers and produces a comprehensive audit report.
- */
 export async function performAudit(html: string): Promise<AuditReport> {
-  const [llmFriendly, w3cCompliance, seo, semanticHtml, accessibility] =
-    await Promise.all([
-      analyzeLLMFriendly(html),
-      analyzeW3CCompliance(html),
-      analyzeSEO(html),
-      analyzeSemanticHtml(html),
-      analyzeAccessibility(html),
-    ]);
+  const { allAuditScore } = await analyzeAll(html);
 
-  // Calculate overall score as average of all criteria
+  const {
+    llmFriendly,
+    w3cCompliance,
+    seo,
+    semanticHtml,
+    accessibility,
+    docSize,
+  } = allAuditScore;
+
   const overallScore = Math.round(
-    (llmFriendly.score +
+    (
+      llmFriendly.score +
       w3cCompliance.score +
       seo.score +
       semanticHtml.score +
-      accessibility.score) /
-      5
+      accessibility.score
+    ) / 5
   );
 
   return {
@@ -55,5 +56,6 @@ export async function performAudit(html: string): Promise<AuditReport> {
     seo,
     semanticHtml,
     accessibility,
+    docSize,
   };
 }

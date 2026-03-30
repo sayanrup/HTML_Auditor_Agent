@@ -16,6 +16,11 @@ interface CriterionResult {
   issues: Issue[];
 }
 
+interface docResult {
+  size: number;
+  recommendation: string;
+}
+
 interface AuditReportData {
   overallScore: number;
   llmFriendly: CriterionResult;
@@ -23,6 +28,7 @@ interface AuditReportData {
   seo: CriterionResult;
   semanticHtml: CriterionResult;
   accessibility: CriterionResult;
+  docSize: docResult;
 }
 
 interface AuditResultsProps {
@@ -112,10 +118,12 @@ function CriterionCard({
                       </div>
                     </div>
                     <p className="text-sm text-slate-600 mt-2">
-                      <span className="font-semibold">Recommendation:</span> {issue.recommendation}
+                      <span className="font-semibold" style={{ color: '#6666ff' }}>Recommendation:</span>
+<span style={{ color: '#6666ff' }}>{issue.recommendation}</span>
                     </p>
                     <p className="text-sm text-slate-600 mt-2">
-                      <span className="font-semibold">htmlSnippet:</span> {issue.htmlSnippet}
+                      <span className="font-semibold" style={{ color: '#ff6666' }}>htmlSnippet:</span>
+<span style={{ color: '#ff6666' }}>{issue.htmlSnippet}</span>
                     </p>
                   </div>
                 ))}
@@ -189,6 +197,19 @@ export default function AuditResults({ report }: AuditResultsProps) {
       <div>
         <h2 className="text-2xl font-bold text-slate-900 mb-4">Detailed Breakdown</h2>
         <div className="grid gap-4">
+          <Card className="overflow-hidden bg-yellow-100 text-yellow-900">
+            <CardContent className="pt-4 pb-4">
+              <div className="space-y-3">
+                <div className="border-l-4 border-slate-200 pl-4 py-2">
+                  <div>{`Size : ${(report.docSize.size)/1000} kb`}</div>
+                  <p className="text-sm text-slate-600 mt-2">
+                    <span className="font-semibold" style={{ color: '#6666ff' }}>Recommendation:</span>
+                    <span style={{ color: '#6666ff' }}>{report.docSize.recommendation}</span>
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
           {criteria.map((criterion, idx) => (
             <CriterionCard
               key={idx}

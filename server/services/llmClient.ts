@@ -31,6 +31,8 @@ function getLlmConfig() {
   return { ...parsed.data, provider };
 }
 
+let intermeshHitCount = 0;
+
 export class LlmConfigError extends Error {
   constructor(message: string) {
     super(message);
@@ -49,6 +51,8 @@ export async function llmCompleteJson(messages: LlmChatMessage[]) {
   if (cfg.provider === "openai") {
     const url = cfg.baseUrl || 'https://imllm.intermesh.net/v1/chat/completions';
     const model = cfg.model || "openai/gpt-4.1-mini";
+    intermeshHitCount++;
+    console.log(`[imllm.intermesh.net] hit #${intermeshHitCount} — provider: openai, model: ${model}`);
     const res = await fetch(url, {
       method: "POST",
       headers: {
@@ -75,15 +79,16 @@ export async function llmCompleteJson(messages: LlmChatMessage[]) {
   }
 
   if (cfg.provider === "anthropic") {
-    const url = "https://api.anthropic.com/v1/messages";
-    const model = cfg.model || "claude-3-5-sonnet-latest";
+    const url = "https://imllm.intermesh.net/v1/chat/completions";
+    const model = cfg.model || "anthropic/claude-opus-4.5";
     const system = messages.find((m) => m.role === "system")?.content ?? "";
     const user = messages.filter((m) => m.role === "user").map((m) => m.content).join("\n\n");
+    intermeshHitCount++;
+    console.log(`[imllm.intermesh.net] hit #${intermeshHitCount} — provider: anthropic, model: ${model}`);
     const res = await fetch(url, {
       method: "POST",
       headers: {
         "x-api-key": cfg.apiKey,
-        "anthropic-version": "2023-06-01",
         "Content-Type": "application/json",
       },
       body: JSON.stringify({

@@ -1,26 +1,17 @@
 import { describe, it, expect, vi } from "vitest";
 import { performAudit } from "./auditOrchestrator";
 
+const COMBINED_MOCK = JSON.stringify({
+  llmFriendly: { score: 85, issues: [{ severity: "info", issue: "mock-llmFriendly", recommendation: "ok", htmlSnippet: "<div/>" }] },
+  w3cCompliance: { score: 60, issues: [{ severity: "info", issue: "mock-w3cCompliance", recommendation: "ok", htmlSnippet: "<div/>" }] },
+  seo: { score: 70, issues: [{ severity: "info", issue: "mock-seo", recommendation: "ok", htmlSnippet: "<div/>" }] },
+  semanticHtml: { score: 90, issues: [{ severity: "info", issue: "mock-semanticHtml", recommendation: "ok", htmlSnippet: "<div/>" }] },
+  accessibility: { score: 80, issues: [{ severity: "info", issue: "mock-accessibility", recommendation: "ok", htmlSnippet: "<div/>" }] },
+});
+
 vi.mock("./llmClient", () => {
   return {
-    llmCompleteJson: vi.fn(async (messages: any[]) => {
-      const user = messages.find((m) => m.role === "user")?.content ?? "";
-      const match = /\((accessibility|seo|semanticHtml|w3cCompliance|llmFriendly)\)/.exec(
-        String(user)
-      );
-      const id = match?.[1] ?? "seo";
-      const scoreMap: Record<string, number> = {
-        accessibility: 80,
-        seo: 70,
-        semanticHtml: 90,
-        w3cCompliance: 60,
-        llmFriendly: 85,
-      };
-      return JSON.stringify({
-        score: scoreMap[id] ?? 75,
-        issues: [{ severity: "info", issue: `mock-${id}`, recommendation: "ok" }],
-      });
-    }),
+    llmCompleteJson: vi.fn(async () => COMBINED_MOCK),
     LlmConfigError: class LlmConfigError extends Error {},
   };
 });
