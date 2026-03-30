@@ -51,6 +51,9 @@ export async function llmCompleteJson(messages: LlmChatMessage[]) {
   if (cfg.provider === "openai") {
     const url = cfg.baseUrl || 'https://imllm.intermesh.net/v1/chat/completions';
     const model = cfg.model || "openai/gpt-4.1-mini";
+    console.log("url ", url);
+    console.log("model ", model);
+    console.log("apiKey ", cfg.apiKey);
     intermeshHitCount++;
     console.log(`[imllm.intermesh.net] hit #${intermeshHitCount} — provider: openai, model: ${model}`);
     const res = await fetch(url, {
