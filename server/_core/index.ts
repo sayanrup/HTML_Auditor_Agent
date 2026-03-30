@@ -6,6 +6,9 @@ import { createExpressMiddleware } from "@trpc/server/adapters/express";
 import { appRouter } from "../routers";
 import { createContext } from "./context";
 import { serveStatic, setupVite } from "./vite";
+import { createProxyMiddleware } from "http-proxy-middleware";
+// import path from 'path';
+// import { fileURLToPath } from "url";
 
 function isPortAvailable(port: number): Promise<boolean> {
   return new Promise(resolve => {
@@ -40,6 +43,20 @@ async function startServer() {
       createContext,
     })
   );
+
+  app.use(
+    "/im-agents/varnish",
+      // const __filename = fileURLToPath(import.meta.url);
+      // const __dirname = path.dirname(__filename);
+      // res.sendFile(path.join(__dirname, "a.html"))
+      createProxyMiddleware({
+        target: "http://localhost:3005",
+        changeOrigin: true,
+        pathRewrite: {
+          "^/im-agents/varnish": "",
+        },
+      })
+  )
   // development mode uses Vite, production mode uses static files
   if (process.env.NODE_ENV === "development") {
     await setupVite(app, server);
