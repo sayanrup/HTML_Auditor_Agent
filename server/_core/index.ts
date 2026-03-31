@@ -45,12 +45,12 @@ async function startServer() {
   );
 
   app.use(
-    "/im-agents/varnish",
+    "/im-agents/api/",
       // const __filename = fileURLToPath(import.meta.url);
       // const __dirname = path.dirname(__filename);
       // res.sendFile(path.join(__dirname, "a.html"))
       createProxyMiddleware({
-        target: "http://localhost:3005",
+        target: "http://localhost:5173",
         changeOrigin: true,
         pathRewrite: {
           "^/im-agents/varnish": "",
