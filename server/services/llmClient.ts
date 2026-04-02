@@ -40,7 +40,7 @@ export class LlmConfigError extends Error {
   }
 }
 
-export async function llmCompleteJson(messages: LlmChatMessage[]) {
+export async function llmCompleteJson(llm_api_key: string, llm_model: string,messages: LlmChatMessage[]) {
   const cfg = getLlmConfig();
   if (!cfg) {
     throw new LlmConfigError(
@@ -48,18 +48,17 @@ export async function llmCompleteJson(messages: LlmChatMessage[]) {
     );
   }
 
-  if (cfg.provider === "openai") {
     const url = cfg.baseUrl || 'https://imllm.intermesh.net/v1/chat/completions';
-    const model = cfg.model || "openai/gpt-4.1-mini";
+    const model = llm_model || "openai/gpt-4.1-mini";
     console.log("url ", url);
     console.log("model ", model);
-    console.log("apiKey ", cfg.apiKey);
+    console.log("apiKey ", llm_api_key);
     intermeshHitCount++;
     console.log(`[imllm.intermesh.net] hit #${intermeshHitCount} — provider: openai, model: ${model}`);
     const res = await fetch(url, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${cfg.apiKey}`,
+        Authorization: `Bearer ${llm_api_key}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
@@ -79,65 +78,5 @@ export async function llmCompleteJson(messages: LlmChatMessage[]) {
       throw new Error("OpenAI returned empty content");
     }
     return content;
-  }
-
-  if (cfg.provider === "anthropic") {
-    const url = "https://imllm.intermesh.net/v1/chat/completions";
-    const model = cfg.model || "anthropic/claude-opus-4.5";
-    const system = messages.find((m) => m.role === "system")?.content ?? "";
-    const user = messages.filter((m) => m.role === "user").map((m) => m.content).join("\n\n");
-    intermeshHitCount++;
-    console.log(`[imllm.intermesh.net] hit #${intermeshHitCount} — provider: anthropic, model: ${model}`);
-    const res = await fetch(url, {
-      method: "POST",
-      headers: {
-        "x-api-key": cfg.apiKey,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model,
-        max_tokens: 1200,
-        temperature: 0.2,
-        system,
-        messages: [{ role: "user", content: user }],
-      }),
-    });
-    if (!res.ok) {
-      const text = await res.text();
-      throw new Error(`Anthropic request failed (${res.status}): ${text}`);
-    }
-    const data = await res.json();
-    const content = data?.content?.[0]?.text;
-    if (typeof content !== "string" || content.trim().length === 0) {
-      throw new Error("Anthropic returned empty content");
-    }
-    return content;
-  }
-
-  // google
-  const model = cfg.model || "gemini-1.5-flash";
-  const url =
-    (cfg.baseUrl || "https://generativelanguage.googleapis.com").replace(/\/+$/, "") +
-    `/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(cfg.apiKey)}`;
-  const system = messages.find((m) => m.role === "system")?.content ?? "";
-  const user = messages.filter((m) => m.role === "user").map((m) => m.content).join("\n\n");
-  const res = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      contents: [{ role: "user", parts: [{ text: `${system}\n\n${user}`.trim() }] }],
-      generationConfig: { temperature: 0.2 },
-    }),
-  });
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`Google request failed (${res.status}): ${text}`);
-  }
-  const data = await res.json();
-  const content = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-  if (typeof content !== "string" || content.trim().length === 0) {
-    throw new Error("Google returned empty content");
-  }
-  return content;
 }
 

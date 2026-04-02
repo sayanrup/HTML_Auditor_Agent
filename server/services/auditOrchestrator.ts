@@ -27,8 +27,8 @@ export interface AuditReport {
   docSize: docResult;
 }
 
-export async function performAudit(html: string): Promise<AuditReport> {
-  const { allAuditScore } = await analyzeAll(html);
+export async function performAudit(html: string, llm_api_key: string, llm_model: string): Promise<AuditReport> {
+  const { allAuditScore } = await analyzeAll(html, llm_api_key, llm_model);
 
   const {
     llmFriendly,

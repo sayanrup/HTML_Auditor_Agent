@@ -75,7 +75,7 @@ function makeFallbackAllResult(issue: string, recommendation: string): AllAuditS
 }
 
 export async function evaluateAllWithLlm(
-  html: string
+  html: string, llm_api_key: string, llm_model: string
 ): Promise<{ allAuditScore: AllAuditScore }> {
   const combinedRubric = [
     "--- LLM-Friendly HTML (llmFriendly) ---",
@@ -97,7 +97,7 @@ export async function evaluateAllWithLlm(
   try {
     const htmlSize = Buffer.byteLength(html, 'utf8');
 
-    const raw = await llmCompleteJson([
+    const raw = await llmCompleteJson(llm_api_key, llm_model, [
       {
         role: "system",
         content: "You are a strict HTML auditing engine. Return ONLY valid JSON. Do not include markdown fences.",
