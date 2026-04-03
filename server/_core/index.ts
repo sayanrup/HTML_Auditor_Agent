@@ -7,8 +7,6 @@ import { appRouter } from "../routers";
 import { createContext } from "./context";
 import { serveStatic, setupVite } from "./vite";
 import { createProxyMiddleware } from "http-proxy-middleware";
-// import path from 'path';
-// import { fileURLToPath } from "url";
 
 function isPortAvailable(port: number): Promise<boolean> {
   return new Promise(resolve => {
@@ -52,11 +50,18 @@ async function startServer() {
       createProxyMiddleware({
         target: "http://localhost:5173",
         changeOrigin: true,
-        pathRewrite: {
-          "^/im-agents/varnish": "",
-        },
       })
   )
+
+app.use(
+  ["/im-agents/api", "/im-agents/design-guideline-agent"],
+  createProxyMiddleware({
+    target: "http://localhost:5173",
+    changeOrigin: true,
+  })
+);
+
+
   // development mode uses Vite, production mode uses static files
   if (process.env.NODE_ENV === "development") {
     await setupVite(app, server);
