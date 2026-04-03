@@ -58,6 +58,9 @@ app.use(
   createProxyMiddleware({
     target: "http://localhost:5173",
     changeOrigin: true,
+    pathRewrite: {
+      "^/im-agents/": "",
+    },
   })
 );
 
