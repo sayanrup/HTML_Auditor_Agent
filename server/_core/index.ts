@@ -43,23 +43,12 @@ async function startServer() {
   );
 
   app.use(
-    "/im-agents/api/",
-      // const __filename = fileURLToPath(import.meta.url);
-      // const __dirname = path.dirname(__filename);
-      // res.sendFile(path.join(__dirname, "a.html"))
-      createProxyMiddleware({
-        target: "http://localhost:5173",
-        changeOrigin: true,
-      })
-  )
-
-  app.use(
     "/im-agents/api",
     createProxyMiddleware({
       target: "http://localhost:5173",
       changeOrigin: true,
       pathRewrite: {
-        "^/im-agents": "",
+        "^/im-agents/api": "/api",
       },
     })
   );
@@ -70,7 +59,7 @@ async function startServer() {
       target: "http://localhost:5173",
       changeOrigin: true,
       pathRewrite: {
-        "^/im-agents": "",
+        "^/im-agents/design-guideline-agent": "/design-guideline-agent",
       },
     })
   );
