@@ -59,7 +59,7 @@ async function startServer() {
       target: "http://localhost:5173",
       changeOrigin: true,
       pathRewrite: {
-        "^/im-agents/design-guideline-agent": "/design-guideline-agent",
+        "^/im-agents/design-guideline-agent": "/design",
       },
     })
   );
