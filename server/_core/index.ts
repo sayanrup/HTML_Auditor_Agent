@@ -53,16 +53,27 @@ async function startServer() {
       })
   )
 
-app.use(
-  ["/im-agents/api", "/im-agents/design-guideline-agent"],
-  createProxyMiddleware({
-    target: "http://localhost:5173",
-    changeOrigin: true,
-    pathRewrite: {
-      "^/im-agents/": "",
-    },
-  })
-);
+  app.use(
+    "/im-agents/api",
+    createProxyMiddleware({
+      target: "http://localhost:5173",
+      changeOrigin: true,
+      pathRewrite: {
+        "^/im-agents": "",
+      },
+    })
+  );
+
+  app.use(
+    "/im-agents/design-guideline-agent",
+    createProxyMiddleware({
+      target: "http://localhost:5173",
+      changeOrigin: true,
+      pathRewrite: {
+        "^/im-agents": "",
+      },
+    })
+  );
 
 
   // development mode uses Vite, production mode uses static files
