@@ -28,3 +28,20 @@ Restart on dev:
      - ssh -o StrictHostKeyChecking=no intermsh@34.123.31.76 "(cd /home3/indiamart/public_html/im-audit-agent; pm2 reload 'dev-html-audit')"
   only:
      - development
+
+Deploy to core-webvitals:
+  stage: deploy
+  script:
+    - ssh -o StrictHostKeyChecking=no intermsh@34.123.31.76 "(cd /home3/indiamart/public_html/core-web-vitals; git checkout core-webvitals; git pull; git status)"
+    - echo "Kill Ssh-agent"
+    - eval $(ssh-agent -k)
+  only:
+    - core-webvitals
+
+Restart on core-webvitals:
+  stage: restart
+  script:
+    - ssh -o StrictHostKeyChecking=no intermsh@34.123.31.76 "(cd /home3/indiamart/public_html/core-web-vitals; pm2 reload 'cwv-agent')"
+  only:
+    - core-webvitals
+
