@@ -48,18 +48,18 @@ async function startServer() {
       target: "http://localhost:5173",
       changeOrigin: true,
       pathRewrite: {
-        "^/im-agents/api": "/api",
+        "^/im-agents": "",
       },
     })
   );
 
   app.use(
-    "/im-agents/design-guideline-agent",
+    "/im-agents/design",
     createProxyMiddleware({
       target: "http://localhost:5173",
       changeOrigin: true,
       pathRewrite: {
-        "^/im-agents/design-guideline-agent": "/design",
+        "^/im-agents": "",
       },
     })
   );
