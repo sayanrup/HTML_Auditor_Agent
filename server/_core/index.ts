@@ -63,6 +63,16 @@ async function startServer() {
       },
     })
   );
+  app.use(
+    "/im-agents/varnish",
+    createProxyMiddleware({
+      target: "http://localhost:3005",
+      changeOrigin: true,
+      pathRewrite: {
+        "^/im-agents": "",
+      },
+    })
+  );
 
 
   // development mode uses Vite, production mode uses static files

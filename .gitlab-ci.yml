@@ -45,3 +45,19 @@ Restart on core-webvitals:
   only:
     - core-webvitals
 
+Deploy to Varnish-main:
+  stage: deploy
+  script:
+    - ssh -o StrictHostKeyChecking=no intermsh@34.123.31.76 "(cd /home3/indiamart/public_html/varnish-agent; git pull; git status)"
+    - echo "Kill Ssh-agent"
+    - eval $(ssh-agent -k)
+  only:
+    - varnish-main
+
+Restart on Varnish-main:
+  stage: restart
+  script:
+    - ssh -o StrictHostKeyChecking=no intermsh@34.123.31.76 "(cd /home3/indiamart/public_html/varnish-agent; pm2 reload 'dev-varnish-audit')"
+  only:
+    - varnish-main
+
