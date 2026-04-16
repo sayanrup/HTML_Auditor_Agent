@@ -157,7 +157,7 @@ export async function evaluateAllWithLlm(
       return {
         allAuditScore: makeFallbackAllResult(
           "LLM not configured for runtime auditing",
-          "Set env vars: LLM_PROVIDER=openai|anthropic|google, LLM_API_KEY=..., optional LLM_MODEL=..., optional LLM_BASE_URL=..."
+          "Add an API key and model in the app Settings, or set LLM_PROVIDER, LLM_API_KEY, and optional LLM_MODEL / LLM_BASE_URL on the server."
         ),
       };
     }

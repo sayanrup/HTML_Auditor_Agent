@@ -1,5 +1,9 @@
 import { useState } from "react";
 import { trpc } from "@/lib/trpc";
+import {
+  loadAuditLlmSettings,
+  saveAuditLlmSettings,
+} from "@/lib/auditLlmSettings";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -22,7 +26,9 @@ export default function AuditPage() {
   const [url, setUrl] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [auditReport, setAuditReport] = useState<any>(null);
-  const [config, setConfig] = useState<Config | null>(null);
+  const [config, setConfig] = useState<Config | null>(() =>
+    loadAuditLlmSettings()
+  );
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [infoOpen, setInfoOpen] = useState(false);
   const [feedbackOpen, setFeedbackOpen] = useState(false);
@@ -71,6 +77,10 @@ export default function AuditPage() {
   const handleSaveConfig = async (newCfg: Config) => {
     try {
       setConfig(newCfg);
+      saveAuditLlmSettings({
+        llm_api_key: newCfg.llm_api_key ?? "",
+        llm_model: newCfg.llm_model ?? "",
+      });
       toast.success("Settings saved!");
     } catch (err: any) {
       toast.error(err?.message || "Error saving settings");
