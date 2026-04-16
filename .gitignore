@@ -101,6 +101,9 @@ jspm_packages/
 tmp/
 temp/
 
+# App runtime data (e.g. shared feedback JSON)
+/data/
+
 # Database
 *.db
 *.sqlite

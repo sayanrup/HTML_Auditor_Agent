@@ -7,11 +7,16 @@ import { Loader2, Settings, Info } from "lucide-react";
 import { toast } from "sonner";
 import AuditResults from "@/components/AuditResults";
 import SettingsModal from "@/SettingModal";
+import InfoModal from "@/InfoModal";
+import FeedbackModal from "@/FeedbackModal";
 
 type Config = {
   llm_api_key?: string;
   llm_model?: string;
 };
+
+/** Vite only exposes env vars prefixed with `VITE_` to the client. Optional mirror of `SCM_REPO_URL`. */
+const scmRepoUrlFromVite = import.meta.env.VITE_SCM_REPO_URL?.trim() || null;
 
 export default function AuditPage() {
   const [url, setUrl] = useState("");
@@ -19,6 +24,12 @@ export default function AuditPage() {
   const [auditReport, setAuditReport] = useState<any>(null);
   const [config, setConfig] = useState<Config | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [infoOpen, setInfoOpen] = useState(false);
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
+
+  const publicInfoQuery = trpc.system.publicInfo.useQuery(undefined, {
+    staleTime: 5 * 60_000,
+  });
 
   const performAuditMutation = trpc.audit.performAudit.useMutation({
     onSuccess: (data) => {
@@ -82,12 +93,42 @@ export default function AuditPage() {
             </p>
           </div>
 
-          <button
-            onClick={() => setSettingsOpen(true)}
-            className="p-2 rounded-lg hover:bg-gray-100 transition text-gray-700 hover:text-gray-900"
-          >
-            <Settings className="w-5 h-5" />
-          </button>
+          <div className="flex items-center gap-1 shrink-0">
+            <button
+              type="button"
+              onClick={() => setFeedbackOpen(true)}
+              className="p-2 rounded-lg hover:bg-gray-100 transition opacity-90 hover:opacity-100"
+              title="Feedback"
+              aria-label="Feedback"
+            >
+              <img
+                src={`${import.meta.env.BASE_URL}feedback-icon.png`}
+                alt=""
+                width={28}
+                height={28}
+                className="w-7 h-7 object-contain block"
+                aria-hidden
+              />
+            </button>
+            <button
+              type="button"
+              onClick={() => setInfoOpen(true)}
+              className="p-2 rounded-lg hover:bg-gray-100 transition text-gray-700 hover:text-gray-900"
+              title="Repository info"
+              aria-label="Repository info"
+            >
+              <Info className="w-5 h-5" />
+            </button>
+            <button
+              type="button"
+              onClick={() => setSettingsOpen(true)}
+              className="p-2 rounded-lg hover:bg-gray-100 transition text-gray-700 hover:text-gray-900"
+              title="Settings"
+              aria-label="Settings"
+            >
+              <Settings className="w-5 h-5" />
+            </button>
+          </div>
         </div>
 
         {/* Audit Form */}
@@ -136,6 +177,22 @@ export default function AuditPage() {
         )}
 
         {/* Settings Modal */}
+        {infoOpen && (
+          <InfoModal
+            scmRepoUrl={
+              publicInfoQuery.data?.scmRepoUrl ?? scmRepoUrlFromVite
+            }
+            isLoading={
+              publicInfoQuery.isLoading && !scmRepoUrlFromVite
+            }
+            onClose={() => setInfoOpen(false)}
+          />
+        )}
+
+        {feedbackOpen && (
+          <FeedbackModal onClose={() => setFeedbackOpen(false)} />
+        )}
+
         {settingsOpen && (
           <SettingsModal
             config={config || undefined}

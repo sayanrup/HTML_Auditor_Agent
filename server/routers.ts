@@ -2,10 +2,24 @@ import { systemRouter } from "./_core/systemRouter";
 import { publicProcedure, router } from "./_core/trpc";
 import { fetchPageHtml } from "./services/urlFetcher";
 import { performAudit } from "./services/auditOrchestrator";
+import { addFeedback, listFeedback } from "./services/feedbackStore";
 import { z } from "zod";
 
 export const appRouter = router({
   system: systemRouter,
+  feedback: router({
+    list: publicProcedure.query(async () => listFeedback()),
+    submit: publicProcedure
+      .input(
+        z.object({
+          message: z.string().min(1).max(4000),
+        })
+      )
+      .mutation(async ({ input }) => {
+        const entry = await addFeedback(input.message);
+        return entry;
+      }),
+  }),
   audit: router({
     performAudit: publicProcedure
       .input(
