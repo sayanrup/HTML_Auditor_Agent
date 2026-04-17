@@ -80,9 +80,9 @@ async function startServer() {
     createProxyMiddleware({
       target: "http://localhost:3010",
       changeOrigin: true,
-      // pathRewrite: {
-      //   "^/im-agents": "",
-      // },
+      pathRewrite: {
+        "^/im-agents": "",
+      },
     })
   );
 
