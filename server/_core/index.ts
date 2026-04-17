@@ -63,6 +63,7 @@ async function startServer() {
       },
     })
   );
+
   app.use(
     "/im-agents/varnish",
     createProxyMiddleware({
@@ -71,6 +72,17 @@ async function startServer() {
       pathRewrite: {
         "^/im-agents": "",
       },
+    })
+  );
+
+  app.use(
+    "/im-agents/regression-testing",
+    createProxyMiddleware({
+      target: "http://localhost:3010",
+      changeOrigin: true,
+      // pathRewrite: {
+      //   "^/im-agents": "",
+      // },
     })
   );
 
