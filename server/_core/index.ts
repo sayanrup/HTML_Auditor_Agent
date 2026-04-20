@@ -81,6 +81,8 @@ async function startServer() {
     createProxyMiddleware({
       target: "http://localhost:3010",
       changeOrigin: true,
+      timeout: 600000,       // time for incoming request (client → proxy)
+      proxyTimeout: 600000,
       pathFilter: (pathname) =>
         pathname.startsWith("/im-agents/regression-testing"),
       pathRewrite: (path, req) => {
