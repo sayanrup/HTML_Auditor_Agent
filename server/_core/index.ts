@@ -65,12 +65,17 @@ async function startServer() {
   );
 
   app.use(
-    "/im-agents/varnish",
     createProxyMiddleware({
       target: "http://localhost:3005",
       changeOrigin: true,
-      pathRewrite: {
-        "^/im-agents": "",
+      timeout: 600000,       // time for incoming request (client → proxy)
+      proxyTimeout: 600000,
+      pathFilter: (pathname) =>
+        pathname.startsWith("/im-agents/varnish"),
+      pathRewrite: (path, req) => {
+        return "originalUrl" in req && typeof req.originalUrl === "string"
+          ? req.originalUrl
+          : path;
       },
     })
   );
