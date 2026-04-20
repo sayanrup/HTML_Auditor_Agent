@@ -75,13 +75,18 @@ async function startServer() {
     })
   );
 
+  // Do not mount on /im-agents/regression-testing (Express would strip it from req.url).
+  // Forward originalUrl unchanged so :3010 receives /im-agents/regression-testing/...
   app.use(
-    "/im-agents/regression-testing",
     createProxyMiddleware({
       target: "http://localhost:3010",
       changeOrigin: true,
-      pathRewrite: {
-        "^/im-agents": "",
+      pathFilter: (pathname) =>
+        pathname.startsWith("/im-agents/regression-testing"),
+      pathRewrite: (path, req) => {
+        return "originalUrl" in req && typeof req.originalUrl === "string"
+          ? req.originalUrl
+          : path;
       },
     })
   );
