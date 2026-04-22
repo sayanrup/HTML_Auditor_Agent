@@ -98,6 +98,20 @@ async function startServer() {
     })
   );
 
+  app.use(
+    createProxyMiddleware({
+      target: "http://localhost:3002",
+      changeOrigin: true,
+      pathFilter: (pathname) =>
+        pathname.startsWith("/im-agents/pii_agent"),
+      pathRewrite: (path, req) => {
+        return "originalUrl" in req && typeof req.originalUrl === "string"
+          ? req.originalUrl
+          : path;
+      },
+    })
+  );
+
 
   // development mode uses Vite, production mode uses static files
   if (process.env.NODE_ENV === "development") {
