@@ -49,6 +49,36 @@ export default function AuditPage() {
     },
   });
 
+  const applyDirMutation = trpc.audit.applyRecommendationsToDir.useMutation({
+    onSuccess: (data) => {
+      const longToast = { duration: 30_000 } as const;
+
+      if (data.pushed) {
+        const msg = `Pushed branch "${data.branch}" (${data.issuesApplied} file change(s)).`;
+        console.info("[DIR apply]", msg, data);
+        toast.success(msg, longToast);
+      } else {
+        const msg = data.locationSummary
+          ? `Nothing pushed. ${data.locationSummary}`
+          : "No unique source match in DIR repo. Nothing committed or pushed.";
+        console.info("[DIR apply]", msg, data);
+        toast.message(msg, longToast);
+      }
+      if (data.skipped.length > 0) {
+        const skipMsg = `${data.skipped.length} issue(s) skipped: ${data.skipped
+          .map((s) => s.reason)
+          .join(" | ")}`;
+        console.info("[DIR apply]", skipMsg);
+        toast.message(skipMsg, longToast);
+      }
+    },
+    onError: (e) => {
+      const msg = e.message || "DIR apply failed";
+      console.error("[DIR apply]", msg, e);
+      toast.error(msg, { duration: 30_000 });
+    },
+  });
+
   const handleAudit = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -172,7 +202,26 @@ export default function AuditPage() {
         </Card>
 
         {/* Results */}
-        {auditReport && <AuditResults report={auditReport} />}
+        {auditReport && (
+          <AuditResults
+            report={auditReport}
+            dirRepoReady={publicInfoQuery.data?.dirRepoReady}
+            dirFixPending={applyDirMutation.isPending}
+            onApplyDirFixes={() => {
+              if (!config?.llm_api_key || !config?.llm_model) {
+                toast.error("Add LLM API key and model in Settings first.");
+                return;
+              }
+              applyDirMutation.mutate({
+                report: auditReport,
+                llm_api_key: config.llm_api_key,
+                llm_model: config.llm_model,
+                branchName: "html-audit-suggestion",
+                auditedPageUrl: url.trim() || undefined,
+              });
+            }}
+          />
+        )}
 
         {/* Empty State */}
         {!auditReport && !isLoading && (

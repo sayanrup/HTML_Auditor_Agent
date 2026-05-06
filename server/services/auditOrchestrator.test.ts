@@ -7,6 +7,7 @@ const COMBINED_MOCK = JSON.stringify({
   seo: { score: 70, issues: [{ severity: "info", issue: "mock-seo", recommendation: "ok", htmlSnippet: "<div/>" }] },
   semanticHtml: { score: 90, issues: [{ severity: "info", issue: "mock-semanticHtml", recommendation: "ok", htmlSnippet: "<div/>" }] },
   accessibility: { score: 80, issues: [{ severity: "info", issue: "mock-accessibility", recommendation: "ok", htmlSnippet: "<div/>" }] },
+  docSize: { size: 1, recommendation: "mock doc size rec" },
 });
 
 vi.mock("./llmClient", () => {
@@ -15,6 +16,9 @@ vi.mock("./llmClient", () => {
     LlmConfigError: class LlmConfigError extends Error {},
   };
 });
+
+const MOCK_LLM_KEY = "test-api-key";
+const MOCK_LLM_MODEL = "test-model";
 
 describe("Audit Orchestrator", () => {
   it("should perform a complete audit and return all criteria scores", async () => {
@@ -71,7 +75,7 @@ describe("Audit Orchestrator", () => {
       </html>
     `;
 
-    const report = await performAudit(html);
+    const report = await performAudit(html, MOCK_LLM_KEY, MOCK_LLM_MODEL);
 
     // Check that all criteria are present
     expect(report).toHaveProperty("overallScore");
@@ -106,6 +110,13 @@ describe("Audit Orchestrator", () => {
     expect(Array.isArray(report.seo.issues)).toBe(true);
     expect(Array.isArray(report.semanticHtml.issues)).toBe(true);
     expect(Array.isArray(report.accessibility.issues)).toBe(true);
+
+    expect(report.docSize.htmlBytes).toBeGreaterThan(0);
+    expect(report.docSize.markupHtmlBytes).toBeGreaterThan(0);
+    expect(report.docSize.markupHtmlBytes).toBeLessThanOrEqual(report.docSize.htmlBytes);
+    expect(report.docSize.visibleTextChars).toBeGreaterThan(0);
+    expect(report.docSize.htmlToTextRatio).toBeGreaterThan(0);
+    expect(report.docSize.size).toBe(report.docSize.htmlBytes);
   });
 
   it("should handle poorly structured HTML", async () => {
@@ -117,7 +128,7 @@ describe("Audit Orchestrator", () => {
       </html>
     `;
 
-    const report = await performAudit(html);
+    const report = await performAudit(html, MOCK_LLM_KEY, MOCK_LLM_MODEL);
 
     // Should still return valid scores
     expect(report.overallScore).toBeGreaterThanOrEqual(0);
@@ -148,7 +159,7 @@ describe("Audit Orchestrator", () => {
       </html>
     `;
 
-    const report = await performAudit(html);
+    const report = await performAudit(html, MOCK_LLM_KEY, MOCK_LLM_MODEL);
 
     // Overall score should be approximately the average
     const average = Math.round(
@@ -172,7 +183,7 @@ describe("Audit Orchestrator", () => {
       </html>
     `;
 
-    const report = await performAudit(html);
+    const report = await performAudit(html, MOCK_LLM_KEY, MOCK_LLM_MODEL);
 
     // Get all issues
     const allIssues = [

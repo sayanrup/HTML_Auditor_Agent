@@ -1,4 +1,5 @@
 import { analyzeAll } from "../auditors/auditors";
+import { computeHtmlTextMetrics } from "./htmlTextMetrics";
 
 export interface AuditIssue {
   severity: "error" | "warning" | "info";
@@ -15,6 +16,14 @@ export interface CriterionResult {
 export interface docResult {
   size: number;
   recommendation: string;
+  /** UTF-8 bytes of the full raw HTML document. */
+  htmlBytes: number;
+  /** UTF-8 bytes of HTML with tags kept, excluding JS/CSS/script/JSON payloads (ratio numerator). */
+  markupHtmlBytes: number;
+  /** Visible text length after stripping tags and those payloads. */
+  visibleTextChars: number;
+  /** `markupHtmlBytes / visibleTextChars` — markup per visible text character. */
+  htmlToTextRatio: number;
 }
 
 export interface AuditReport {
@@ -29,6 +38,7 @@ export interface AuditReport {
 
 export async function performAudit(html: string, llm_api_key: string, llm_model: string): Promise<AuditReport> {
   const { allAuditScore } = await analyzeAll(html, llm_api_key, llm_model);
+  const textMetrics = computeHtmlTextMetrics(html);
 
   const {
     llmFriendly,
@@ -56,6 +66,13 @@ export async function performAudit(html: string, llm_api_key: string, llm_model:
     seo,
     semanticHtml,
     accessibility,
-    docSize,
+    docSize: {
+      ...docSize,
+      size: textMetrics.htmlBytes,
+      htmlBytes: textMetrics.htmlBytes,
+      markupHtmlBytes: textMetrics.markupHtmlBytes,
+      visibleTextChars: textMetrics.visibleTextChars,
+      htmlToTextRatio: textMetrics.htmlToTextRatio,
+    },
   };
 }

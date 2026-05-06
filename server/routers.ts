@@ -6,6 +6,7 @@ import {
   type AuditReport,
 } from "./services/auditOrchestrator";
 import { addFeedback, listFeedback } from "./services/feedbackStore";
+import { applyAuditRecommendationsToDir } from "./services/dirRepoFixes";
 import { z } from "zod";
 
 /** Initial attempt plus this many retries (5 total attempts). */
@@ -86,6 +87,63 @@ export const appRouter = router({
         }
 
         return report;
+      }),
+    applyRecommendationsToDir: publicProcedure
+      .input(
+        z.object({
+          report: z.any(),
+          llm_api_key: z.string().min(1),
+          llm_model: z.string().min(1),
+          branchName: z
+            .string()
+            .min(1)
+            .max(200)
+            .optional()
+            .default("html-audit-suggestion"),
+          /** Page URL that was audited — helps pick the right source file when needles match many files. */
+          auditedPageUrl: z.string().min(1).max(4096).optional(),
+          /** Force a specific sibling repo target instead of URL-based selection. */
+          repoTarget: z.enum(["dir", "pdp", "mobile"]).optional(),
+        })
+      )
+      .mutation(async ({ input }) => {
+        const result = await applyAuditRecommendationsToDir({
+          report: input.report as AuditReport,
+          branchName: input.branchName,
+          llm_api_key: input.llm_api_key,
+          llm_model: input.llm_model,
+          auditedPageUrl: input.auditedPageUrl,
+          repoTarget: input.repoTarget,
+        });
+        console.log("[audit.applyRecommendationsToDir]", {
+          pushed: result.pushed,
+          branch: result.branch,
+          repoRoot: result.repoRoot,
+          repoTarget: result.repoTarget,
+          repoLabel: result.repoLabel,
+          issuesApplied: result.issuesApplied,
+          issuesAttempted: result.issuesAttempted,
+          filesTouched: result.filesTouched,
+        });
+        if (result.locationSummary) {
+          console.log(
+            "[audit.applyRecommendationsToDir] locationSummary:\n" +
+              result.locationSummary
+          );
+        }
+        if (result.skipped.length > 0) {
+          console.log(
+            "[audit.applyRecommendationsToDir] skipped:",
+            result.skipped
+          );
+        }
+        if (result.issueTrace?.length) {
+          console.log(
+            "[audit.applyRecommendationsToDir] issueTrace:",
+            JSON.stringify(result.issueTrace, null, 2)
+          );
+        }
+        return result;
       }),
   }),
 });

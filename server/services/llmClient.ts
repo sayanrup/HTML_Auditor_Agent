@@ -63,8 +63,16 @@ export async function llmCompleteJson(
   console.log("url ", url);
   console.log("model ", model);
   intermeshHitCount++;
+  const body = JSON.stringify({
+    model,
+    messages,
+    temperature: 0.2,
+    response_format: { type: "json_object" },
+  });
+  const payloadBytes = Buffer.byteLength(body, "utf8");
+  const messagesChars = messages.reduce((a, m) => a + m.content.length, 0);
   console.log(
-    `[imllm.intermesh.net] hit #${intermeshHitCount} — model: ${model}`
+    `[imllm.intermesh.net] hit #${intermeshHitCount} — model: ${model} payloadBytes=${payloadBytes} messagesChars=${messagesChars}`
   );
   const res = await fetch(url, {
     method: "POST",
@@ -72,12 +80,7 @@ export async function llmCompleteJson(
       Authorization: `Bearer ${key}`,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({
-      model,
-      messages,
-      temperature: 0.2,
-      response_format: { type: "json_object" },
-    }),
+    body,
   });
   if (!res.ok) {
     const text = await res.text();

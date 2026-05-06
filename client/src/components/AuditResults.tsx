@@ -1,7 +1,8 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { AlertCircle, CheckCircle2, AlertTriangle, Info, ChevronDown } from "lucide-react";
+import { AlertCircle, CheckCircle2, AlertTriangle, Info, ChevronDown, GitBranch } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { useState } from "react";
 
 interface Issue {
@@ -19,6 +20,10 @@ interface CriterionResult {
 interface docResult {
   size: number;
   recommendation: string;
+  htmlBytes?: number;
+  markupHtmlBytes?: number;
+  visibleTextChars?: number;
+  htmlToTextRatio?: number;
 }
 
 interface AuditReportData {
@@ -31,8 +36,13 @@ interface AuditReportData {
   docSize: docResult;
 }
 
+const DIR_FIX_BRANCH = "html-audit-suggestion";
+
 interface AuditResultsProps {
   report: AuditReportData;
+  dirRepoReady?: boolean;
+  dirFixPending?: boolean;
+  onApplyDirFixes?: () => void;
 }
 
 function getScoreColor(score: number): string {
@@ -102,7 +112,11 @@ function CriterionCard({
             {issues.length === 0 ? (
               <div className="flex items-center gap-2 text-green-700 bg-green-50 p-3 rounded">
                 <CheckCircle2 className="h-5 w-5" />
-                <span>No issues found! This criterion is fully optimized.</span>
+                <span>
+                  {score >= 95
+                    ? "No issues found! This criterion is fully optimized."
+                    : "No specific issues identified — score reflects the LLM's overall assessment of structural quality, not a list of defects."}
+                </span>
               </div>
             ) : (
               <div className="space-y-3">
@@ -136,7 +150,12 @@ function CriterionCard({
   );
 }
 
-export default function AuditResults({ report }: AuditResultsProps) {
+export default function AuditResults({
+  report,
+  dirRepoReady,
+  dirFixPending,
+  onApplyDirFixes,
+}: AuditResultsProps) {
   const criteria = [
     {
       title: "LLM-Friendly HTML",
@@ -172,6 +191,44 @@ export default function AuditResults({ report }: AuditResultsProps) {
 
   return (
     <div className="space-y-6">
+      {/* {onApplyDirFixes && (
+        <Card className="border border-indigo-200 bg-indigo-50/60">
+          <CardContent className="pt-4 pb-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div>
+              <p className="font-medium text-slate-900">Apply fixes to repo</p>
+              <p className="text-sm text-slate-600 mt-1">
+                Matches source by <strong>id</strong> and <strong>class</strong> / <strong>className</strong> first (dynamic pages), then data-*, href, and text. Creates branch{" "}
+                <code className="text-xs">{DIR_FIX_BRANCH}</code> from{" "}
+                <code className="text-xs">stage</code>, commits fixes, then pushes to{" "}
+                <code className="text-xs">origin</code>.
+              </p>
+              {!dirRepoReady && (
+                <p className="text-sm text-amber-800 mt-2">
+                  DIR repo path is missing or not a git checkout. Set{" "}
+                  <code className="text-xs">DIR_REPO_PATH</code> or clone{" "}
+                  <code className="text-xs">dir-impcat-nodejs</code> next to this project.
+                </p>
+              )}
+            </div>
+            <Button
+              type="button"
+              disabled={!dirRepoReady || dirFixPending}
+              onClick={onApplyDirFixes}
+              className="shrink-0"
+            >
+              {dirFixPending ? (
+                <>Applying…</>
+              ) : (
+                <>
+                  <GitBranch className="w-4 h-4 mr-2 inline" />
+                  Apply &amp; push
+                </>
+              )}
+            </Button>
+          </CardContent>
+        </Card>
+      )} */}
+
       {/* Overall Score */}
       <Card className="border-2">
         <CardHeader className="text-center">
@@ -198,10 +255,42 @@ export default function AuditResults({ report }: AuditResultsProps) {
         <h2 className="text-2xl font-bold text-slate-900 mb-4">Detailed Breakdown</h2>
         <div className="grid gap-4">
           <Card className="overflow-hidden bg-yellow-100 text-yellow-900">
-            <CardContent className="pt-4 pb-4">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-lg">Document size &amp; markup density</CardTitle>
+              <CardDescription className="text-yellow-900/80">
+                Page weight and how much HTML carries each unit of visible text.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="pt-0 pb-4">
               <div className="space-y-3">
                 <div className="border-l-4 border-slate-200 pl-4 py-2">
-                  <div>{`Size : ${(report.docSize.size)/1000} kb`}</div>
+                  <div>{`Size : ${report.docSize.size / 1000} kb`}</div>
+                  {report.docSize.htmlToTextRatio != null &&
+                    report.docSize.visibleTextChars != null && (
+                      <div className="text-sm text-slate-700 mt-2 space-y-1">
+                        <div>
+                          Approx. visible text:{" "}
+                          <span>
+                            {report.docSize.visibleTextChars.toLocaleString()}{" "}
+                            characters
+                          </span>{" "}
+                          (scripts, JSON-like blocks, and markup stripped).
+                        </div>
+                        <div>
+                          HTML-to-text ratio:{" "}
+                          <span className="font-semibold">
+                            {report.docSize.htmlToTextRatio.toLocaleString(undefined, {
+                              maximumFractionDigits: 2,
+                            })}
+                          </span>{" "}
+                          UTF-8 bytes of HTML including tags (but excluding
+                          scripts, JSON-like blocks, <code className="text-xs">&lt;style&gt;</code>
+                          , stylesheet links, and inline{" "}
+                          <code className="text-xs">style=</code>) per visible text character —
+                          higher means more markup structure per unit of shown text.
+                        </div>
+                      </div>
+                    )}
                   <p className="text-sm text-slate-600 mt-2">
                     <span className="font-semibold" style={{ color: '#6666ff' }}>Recommendation:</span>
                     <span style={{ color: '#6666ff' }}>{report.docSize.recommendation}</span>
@@ -236,6 +325,54 @@ export default function AuditResults({ report }: AuditResultsProps) {
               </div>
             ))}
           </div>
+          {report.docSize.htmlToTextRatio != null &&
+            report.docSize.visibleTextChars != null && (
+              <div className="mt-6 pt-6 border-t border-slate-200">
+                <div className="text-sm font-semibold text-slate-800 mb-2">
+                  HTML vs visible text
+                </div>
+                <p className="text-sm text-slate-600 mb-3">
+                  Ratio = UTF-8 size of HTML <strong>with tags kept</strong>, excluding JS,
+                  JSON-like blocks, <code className="text-xs">&lt;style&gt;</code>, stylesheet{" "}
+                  <code className="text-xs">&lt;link&gt;</code>, and inline{" "}
+                  <code className="text-xs">style=</code>, divided by visible text (tags stripped
+                  from the text side). Higher = more markup per character of readable text.
+                </p>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-center">
+                  <div>
+                    <div className="text-2xl font-bold text-slate-900">
+                      {report.docSize.htmlToTextRatio.toLocaleString(undefined, {
+                        maximumFractionDigits: 2,
+                      })}
+                    </div>
+                    <div className="text-xs text-slate-600 mt-1">
+                      Markup bytes (incl. tags) / text char
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-2xl font-bold text-slate-900">
+                      {report.docSize.visibleTextChars.toLocaleString()}
+                    </div>
+                    <div className="text-xs text-slate-600 mt-1">Visible text (chars)</div>
+                  </div>
+                  <div>
+                    <div className="text-2xl font-bold text-slate-900">
+                      {((report.docSize.markupHtmlBytes ?? report.docSize.size) / 1000).toFixed(1)}{" "}
+                      kb
+                    </div>
+                    <div className="text-xs text-slate-600 mt-1">
+                      Markup HTML (tags, no JS/CSS/JSON)
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-2xl font-bold text-slate-900">
+                      {(report.docSize.size / 1000).toFixed(1)} kb
+                    </div>
+                    <div className="text-xs text-slate-600 mt-1">Full wire document</div>
+                  </div>
+                </div>
+              </div>
+            )}
         </CardContent>
       </Card>
     </div>
