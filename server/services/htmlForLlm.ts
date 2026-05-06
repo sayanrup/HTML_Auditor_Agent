@@ -20,8 +20,9 @@ import {
   stripNonContentRegions,
 } from "./htmlTextMetrics";
 
-/** Default per-call payload budget. Picked to stay well under upstream upload-stream timeouts. */
-export const DEFAULT_MAX_PAYLOAD_BYTES = 250 * 1024;
+/** Default per-call payload budget. Lowered to ~150 KB to keep both upload-stream
+ *  AND model-side response times within gateway timeouts. */
+export const DEFAULT_MAX_PAYLOAD_BYTES = 150 * 1024;
 
 export type LlmHtmlPrep = {
   prepared: string;
