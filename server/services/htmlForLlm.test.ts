@@ -72,11 +72,40 @@ describe("chunkHtmlForLlm", () => {
     expect(joined).toMatch(/<footer\b/);
   });
 
-  it("hard-slices a single oversize landmark", () => {
+  it("hard-slices a single oversize landmark with no inner siblings", () => {
     const huge = `<main>${"X".repeat(5000)}</main>`;
     const html = `<!doctype html><html><head><title>T</title></head><body>${huge}</body></html>`;
     const r = chunkHtmlForLlm(html, 800);
     expect(r.chunked).toBe(true);
     expect(r.chunks.some((c) => c.includes("chunk:body-part"))).toBe(true);
+  });
+
+  it("drills into oversize landmarks at sibling boundaries instead of byte-slicing", () => {
+    // <main> wraps 5 large sibling <section>s. Each section is small enough on
+    // its own; the splitter should drill in and emit them as siblings, NOT
+    // hard-slice them mid-content.
+    const sections = [1, 2, 3, 4, 5]
+      .map(
+        (i) => `<section id="s${i}">${"S".repeat(900)}</section>`
+      )
+      .join("");
+    const html = `<!doctype html><html><head><title>T</title></head><body><main>${sections}</main></body></html>`;
+    const r = chunkHtmlForLlm(html, 1500);
+    expect(r.chunked).toBe(true);
+
+    // Every section id should appear in the joined body chunks (not lost or split mid-attribute).
+    const joined = r.chunks.slice(1).join("");
+    for (const i of [1, 2, 3, 4, 5]) {
+      expect(joined).toContain(`id="s${i}"`);
+    }
+    // Each body chunk should be within the budget (allow small overhead for marker comments).
+    for (let i = 1; i < r.chunks.length; i++) {
+      expect(Buffer.byteLength(r.chunks[i]!, "utf8")).toBeLessThanOrEqual(1500 + 64);
+    }
+  });
+
+  it("uses lower default budget so heavy pages produce more, smaller chunks", async () => {
+    const { DEFAULT_MAX_PAYLOAD_BYTES } = await import("./htmlForLlm");
+    expect(DEFAULT_MAX_PAYLOAD_BYTES).toBeLessThanOrEqual(100 * 1024);
   });
 });

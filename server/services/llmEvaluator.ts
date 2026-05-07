@@ -500,31 +500,96 @@ export async function evaluateAllWithLlm(
         .filter(Boolean)
         .join("\n");
 
-    const perChunk: AllAuditScore[] = [];
-    for (let i = 0; i < chunks.length; i++) {
-      const chunkContent = chunks[i]!;
+    const TRANSIENT_ERR_RE =
+      /upstream\s*(?:request|response)?\s*timeout|upload\s*stream\s*timeout|gateway\s*timeout|service\s*unavailable|temporarily\s*unavailable|read\s*timed?\s*out|aborted|abort\s*err|fetch failed|network|ECONN|ETIMEDOUT|EAI_AGAIN|socket\s+hang/i;
+
+    /**
+     * Run a chunk through the LLM. On transient failure (upstream timeout,
+     * gateway timeout, network error), recursively split the chunk in half and
+     * retry each half. This is a safety net on top of the per-call retries in
+     * llmClient.ts: if a chunk is just too big/slow for the gateway, halving it
+     * usually succeeds.
+     */
+    const evaluateChunk = async (
+      content: string,
+      idx: number,
+      total: number,
+      depth: number
+    ): Promise<AllAuditScore[]> => {
+      const tag = `${idx + 1}/${total}${depth > 0 ? ` d${depth}` : ""}`;
       try {
         const raw = await llmCompleteJson(llm_api_key, llm_model, [
           { role: "system", content: systemPrompt },
-          { role: "user", content: buildUserPrompt(chunkContent, i, chunks.length) },
+          { role: "user", content: buildUserPrompt(content, idx, total) },
         ]);
         const json = JSON.parse(raw);
         const parsed = AllAuditScoreSchema.safeParse(json);
-        if (parsed.success) {
-          perChunk.push(parsed.data);
-        } else {
-          console.warn(
-            `[evaluateAllWithLlm] chunk ${i + 1}/${chunks.length} returned invalid JSON shape; skipping`
-          );
-        }
-      } catch (chunkErr) {
+        if (parsed.success) return [parsed.data];
         console.warn(
-          `[evaluateAllWithLlm] chunk ${i + 1}/${chunks.length} failed: ${
-            chunkErr instanceof Error ? chunkErr.message : String(chunkErr)
-          }`
+          `[evaluateAllWithLlm] chunk ${tag} returned invalid JSON shape; skipping`
         );
+        return [];
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        const transient = TRANSIENT_ERR_RE.test(msg);
+        const MIN_SHRINK_BYTES = 8 * 1024;
+        const MAX_SHRINK_DEPTH = 3;
+        if (
+          transient &&
+          depth < MAX_SHRINK_DEPTH &&
+          Buffer.byteLength(content, "utf8") > MIN_SHRINK_BYTES
+        ) {
+          const half = Math.floor(content.length / 2);
+          const a = content.slice(0, half);
+          const b = content.slice(half);
+          console.warn(
+            `[evaluateAllWithLlm] chunk ${tag} transient failure; shrink-and-retry. err: ${msg.slice(0, 160)}`
+          );
+          const [ra, rb] = await Promise.all([
+            evaluateChunk(a, idx, total, depth + 1),
+            evaluateChunk(b, idx, total, depth + 1),
+          ]);
+          return [...ra, ...rb];
+        }
+        console.warn(
+          `[evaluateAllWithLlm] chunk ${tag} gave up (depth=${depth}, transient=${transient}): ${msg.slice(0, 240)}`
+        );
+        return [];
       }
-    }
+    };
+
+    /** Bounded-parallel runner: keeps `concurrency` chunks in flight at any time. */
+    const runWithConcurrency = async <R,>(
+      items: string[],
+      concurrency: number,
+      task: (item: string, idx: number) => Promise<R>
+    ): Promise<R[]> => {
+      const results: R[] = new Array(items.length);
+      let cursor = 0;
+      const workers = Array.from(
+        { length: Math.max(1, Math.min(concurrency, items.length)) },
+        async () => {
+          while (true) {
+            const i = cursor++;
+            if (i >= items.length) return;
+            results[i] = await task(items[i]!, i);
+          }
+        }
+      );
+      await Promise.all(workers);
+      return results;
+    };
+
+    const CHUNK_CONCURRENCY = 3;
+    const perChunkArrays = await runWithConcurrency(
+      chunks,
+      CHUNK_CONCURRENCY,
+      (chunkContent, i) => evaluateChunk(chunkContent, i, chunks.length, 0)
+    );
+    const perChunk: AllAuditScore[] = perChunkArrays.flat();
+    console.log(
+      `[evaluateAllWithLlm] perChunk results=${perChunk.length} (from ${chunks.length} top-level chunks, concurrency=${CHUNK_CONCURRENCY})`
+    );
 
     if (perChunk.length === 0) {
       return {
