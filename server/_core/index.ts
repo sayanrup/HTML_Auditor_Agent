@@ -57,6 +57,8 @@ async function startServer() {
     "/im-agents/design",
     createProxyMiddleware({
       target: "http://localhost:5173",
+      timeout: 600000,       // time for incoming request (client → proxy)
+      proxyTimeout: 600000,
       changeOrigin: true,
       pathRewrite: {
         "^/im-agents": "",
