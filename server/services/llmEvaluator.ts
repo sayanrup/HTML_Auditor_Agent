@@ -40,12 +40,104 @@ const RUBRICS = {
 Be exhaustive: heading order and count (missing, duplicate, or skipped levels), one clear topical <h1>, landmark coverage (<main>, nav regions), link and button text quality (avoid "click here", empty anchors, icon-only controls without accessible names in markup), media and embed noise, tables used for layout, microdata/schema gaps that hurt extraction, duplicate or boilerplate blocks, deep wrapper chains, meaningless class/id soup, hidden text tricks, and reliance on client-only rendering.
 Treat "good enough" marketing HTML as mediocre: every avoidable div wrapper, unclear section boundary, or weak list/table structure is a finding. Prefer many specific issues with actionable recommendations over a high score.`,
 
-  w3cCompliance: `Apply a strict, checklist-driven HTML5 review. Penalize heavily for: missing or wrong doctype, missing charset or viewport, malformed or duplicate attributes, unquoted attribute edge cases, obsolete elements (font, center, marquee, etc.), deprecated attributes, bad nesting (e.g. <p> wrapping block-level interactive content), duplicate id values, void elements written incorrectly, inconsistent quoting, and any pattern that would likely fail validation or confuse parsers.
-Also flag probable spec violations when the markup strongly suggests them (e.g. interactive inside interactive, invalid label associations). Do not invent arbitrary line numbers, but do infer from the snippet what is wrong. When unsure between error vs warning, prefer warning with a clear caveat.`,
+  w3cCompliance: `Act as a strict HTML validator. Perform parser-level structural and content-model validation, not visual review.
+Aggressively detect malformed or semantically invalid HTML structures.
+
+Validate:
+- invalid parent-child relationships
+- invalid direct children
+- invalid table/list/form structure
+- nested interactive elements
+- invalid label associations
+- invalid heading nesting/order
+- duplicate ids
+- deprecated/obsolete tags and attributes
+- malformed attributes
+- block elements inside prohibited parents
+- invalid semantic/content-model nesting
+
+Strictly validate direct-child requirements for:
+- dl
+- ul
+- ol
+- table
+- tr
+- thead
+- tbody
+- select
+- picture
+- ruby
+
+Do NOT invent invalid HTML rules.
+Examples of VALID structures:
+- <div><p>...</p></div>
+- block content inside <div>
+- valid nested sectioning content
+
+Repeated structural violations must significantly reduce score.`,
+
   seo: `Audit like an SEO lead before launch. Scrutinize: title length and uniqueness, meta description length and duplication, canonical and robots directives, hreflang hints if present, Twitter Card completeness and consistency with title/description, heading keyword alignment without stuffing, image alts for meaningful images, internal link quality (generic anchor text, nofollow misuse), thin or duplicate body copy signals, JSON-LD presence, correctness and entity coverage, FAQ/HowTo/Product misuse, pagination/meta robots, and mobile-oriented meta.
 List every defensible improvement (missing tags, weak copy, missing structured data for obvious product/article/listing pages, etc.). Site-wide authority is out of scope; Open Graph (og:*) tags are explicitly out of scope and must NOT be reported. Everything else in the HTML is fair game.`,
-  semanticHtml: `Judge semantic structure harshly. Expect appropriate use of header/nav/main/footer/article/section/aside, lists for lists, buttons vs links used correctly, figure/figcaption for meaningful images, table thead/tbody/th scope, forms with fieldset/legend where helpful, and minimal div-only layout.
-Flag: div/span soup where a semantic element exists, multiple mains, missing main on content-heavy pages, section without heading, incorrect heading order, orphaned list items, tables for non-tabular data, misuse of headings for styling, and landmark redundancy or absence. Err on the side of more warnings when semantics are weak even if the page "works".`,
+
+  semanticHtml: `Act as a strict semantic HTML validator, not just a reviewer. Perform parser-level semantic and content-model validation across the provided HTML.
+
+Expect correct use of:
+- semantic landmarks
+- headings
+- lists
+- tables
+- forms
+- buttons vs links
+- figure/figcaption
+- minimal div/span-only markup
+
+Aggressively detect weak, invalid, ambiguous, or non-standard semantics even when visually functional.
+
+Flag:
+- div/span soup
+- missing/multiple/redundant landmarks
+- section/article without headings
+- incorrect heading hierarchy
+- headings used only for styling
+- layout tables
+- empty semantic containers
+- misuse of article/section/nav/aside/main/header/footer
+- visual lists/cards/navigation without semantic structure
+- conflicting native vs ARIA semantics
+- invalid semantic nesting
+- disallowed parent-child relationships
+
+Strictly validate content-model rules including:
+- dl with non-dt/dd direct children
+- ul/ol with non-li direct children
+- select with invalid children
+- table with invalid direct children
+- p wrapping prohibited block-level elements
+- nested interactive elements
+- invalid label-control association
+- invalid form/list/table nesting
+- invalid heading nesting
+- invalid figure usage
+
+Inspect EVERY semantic/container element individually.
+Do not stop after finding one example.
+Do not summarize multiple structural violations into one issue if distinct DOM nodes are visible.
+Repeated violations should generate multiple findings when separate DOM nodes are involved.
+
+Do NOT invent invalid HTML rules.
+Examples of VALID structures:
+- <div><p>...</p></div>
+
+Prefer many specific findings over broad summaries.
+Treat semantic weaknesses as warnings and invalid content-model violations as errors.` + 
+
+"Semantic/content-model validation rules:" +
+"  * Validate direct-child requirements and parent-child restrictions strictly." +
+"  * Inspect lists, tables, forms, dl/dt/dd structures, interactive elements, and heading structures individually." +
+"  * Report EACH invalid semantic/container structure when distinct DOM nodes are involved." +
+"  * Do not assume browser auto-correction makes invalid HTML acceptable." +
+"  * Do not report valid HTML structures as invalid." +
+"  * <div><p>...</p></div> is VALID HTML.",
 
   accessibility: `Use a WCAG 2.1 mindset (A/AA where inferable from HTML only). Aggressively flag: missing or wrong lang on html, missing document title, heading hierarchy breaks, images missing or useless alt, decorative images not marked, form controls without labels or with poor label association, placeholder-only labels, links opening in new windows without warning in text, skip link absence on complex layouts, keyboard traps suggested by markup, tabindex abuse, redundant or wrong ARIA roles, aria-hidden on important content, missing fieldset for radio groups, table headers missing, and focus order risks from tabindex or positive tabindex.
 Use severity: error when the HTML clearly breaks a rule; warning when likely problematic; info for best-practice upgrades. Prefer more findings with concrete markup fixes over giving the benefit of the doubt.`,
@@ -321,7 +413,8 @@ export function filterIssuesAgainstGroundTruth(
 function mergeAllAuditScores(
   perChunk: AllAuditScore[],
   htmlSize: number,
-  gt: GroundTruth
+  gt: GroundTruth,
+  deterministicSemanticIssues: AuditScore["issues"] = []
 ): AllAuditScore {
   let totalDropped = 0;
   const mergeOne = (key: keyof Omit<AllAuditScore, "docSize">): AuditScore => {
@@ -338,7 +431,14 @@ function mergeAllAuditScores(
       droppedHere += dropped;
       totalDropped += dropped;
       for (const iss of kept) {
-        const k = `${iss.severity}|${iss.issue.toLowerCase().trim().slice(0, 100)}`;
+        const normalizedSnippet = iss.htmlSnippet
+          ?.replace(/\s+/g, " ")
+          ?.slice(0, 120);
+
+        const k =
+          key === "semanticHtml" || key === "w3cCompliance"
+            ? `${iss.severity}|${iss.issue}|${normalizedSnippet}`
+            : `${iss.severity}|${iss.issue.toLowerCase().trim().slice(0, 100)}`;
         if (seen.has(k)) continue;
         seen.add(k);
         issues.push(iss);
@@ -356,7 +456,18 @@ function mergeAllAuditScores(
       const REFUND_PER_DROPPED = 4;
       finalScore = Math.min(100, llmScore + droppedHere * REFUND_PER_DROPPED);
     }
-    return { score: finalScore, issues: issues.slice(0, 30) };
+      const ISSUE_CAPS: Record<string, number> = {
+        semanticHtml: 120,
+        w3cCompliance: 80,
+        accessibility: 60,
+        seo: 40,
+        llmFriendly: 40,
+      };
+
+      return {
+        score: finalScore,
+        issues: issues.slice(0, ISSUE_CAPS[key] ?? 40),
+      };
   };
 
   const firstRec =
@@ -367,7 +478,37 @@ function mergeAllAuditScores(
     llmFriendly: mergeOne("llmFriendly"),
     w3cCompliance: mergeOne("w3cCompliance"),
     seo: mergeOne("seo"),
-    semanticHtml: mergeOne("semanticHtml"),
+    semanticHtml: (() => {
+  const mergedSemantic = mergeOne("semanticHtml");
+
+  const normalizeSnippet = (s: string) =>
+  s
+    ?.replace(/\s+/g, " ")
+    ?.replace(/>\s+</g, "><")
+    ?.trim()
+    ?.slice(0, 300);
+
+const existing = new Set(
+  mergedSemantic.issues.map(
+    (x) => `${x.issue}|${normalizeSnippet(x.htmlSnippet)}`
+  )
+)
+
+  for (const issue of deterministicSemanticIssues) {
+    const k = `${issue.issue}|${normalizeSnippet(issue.htmlSnippet)}`;
+
+    if (!existing.has(k)) {
+      mergedSemantic.issues.unshift(issue);
+    }
+  }
+
+  mergedSemantic.score = Math.max(
+    0,
+    mergedSemantic.score - deterministicSemanticIssues.length * 2
+  );
+
+  return mergedSemantic;
+})(),
     accessibility: mergeOne("accessibility"),
     docSize: { size: htmlSize, recommendation: firstRec },
   };
@@ -399,6 +540,80 @@ function makeFallbackAllResult(issue: string, recommendation: string): AllAuditS
   };
 }
 
+function runDeterministicSemanticChecks(html: string): AuditScore["issues"] {
+  const issues: AuditScore["issues"] = [];
+  const seen = new Set<string>();
+  const directChildRules: Record<string, string[]> = {
+    dl: ["dt", "dd", "script", "template"],
+    ul: ["li", "script", "template"],
+    ol: ["li", "script", "template"],
+    select: ["option", "optgroup", "script", "template"],
+    thead: ["tr", "script", "template"],
+    tbody: ["tr", "script", "template"],
+    tfoot: ["tr", "script", "template"],
+    tr: ["td", "th", "script", "template"],
+  };
+
+  for (const [parentTag, allowedChildren] of Object.entries(
+    directChildRules
+  )) {
+    const parentRegex = new RegExp(
+      `<${parentTag}\\b[^>]*>([\\s\\S]*?)<\\/${parentTag}>`,
+      "gi"
+    );
+
+    let parentMatch: RegExpExecArray | null;
+
+    while ((parentMatch = parentRegex.exec(html)) !== null) {
+      const parentHtml = parentMatch[0];
+      const innerHtml = parentMatch[1];
+
+      let depth = 0;
+
+      const tagRegex = /<\/?([a-zA-Z][a-zA-Z0-9-]*)\b[^>]*>/g;
+
+      let tagMatch: RegExpExecArray | null;
+
+      while ((tagMatch = tagRegex.exec(innerHtml)) !== null) {
+        const fullTag = tagMatch[0];
+        const tagName = tagMatch[1].toLowerCase();
+        const isClosing = fullTag.startsWith("</");
+        const selfClosing = fullTag.endsWith("/>");
+
+        if (!isClosing) {
+          if (depth === 0) {
+            if (!allowedChildren.includes(tagName)) {
+              const dedupKey =
+                `${parentTag}|${tagName}|` +
+                parentHtml.replace(/\s+/g, " ").slice(0, 300);
+
+              if (seen.has(dedupKey)) {
+                continue;
+              }
+
+              seen.add(dedupKey);
+              issues.push({
+                severity: "error",
+                issue: `<${parentTag}> has invalid direct child <${tagName}>`,
+                recommendation: `Replace <${tagName}> with a valid direct child for <${parentTag}> or move it outside the <${parentTag}>.`,
+                htmlSnippet: parentHtml.slice(0, 400),
+              });
+            }
+          }
+
+          if (!selfClosing) {
+            depth++;
+          }
+        } else {
+          depth = Math.max(0, depth - 1);
+        }
+      }
+    }
+  }
+
+  return issues;
+}
+
 export async function evaluateAllWithLlm(
   html: string, llm_api_key: string, llm_model: string
 ): Promise<{ allAuditScore: AllAuditScore }> {
@@ -423,6 +638,8 @@ export async function evaluateAllWithLlm(
     const htmlSize = Buffer.byteLength(html, "utf8");
     const h1Count = countOpenTags(html, "h1");
     const mainCount = countOpenTags(html, "main");
+    const deterministicSemanticIssues =
+  runDeterministicSemanticChecks(html);
 
     const { chunks, originalBytes, preparedBytes, totalChunkBytes, chunked } =
       chunkHtmlForLlm(html, DEFAULT_MAX_PAYLOAD_BYTES);
@@ -431,9 +648,15 @@ export async function evaluateAllWithLlm(
     );
 
     const systemPrompt =
-      "You are a strict, adversarial HTML auditing engine used before production release. " +
-      "Your job is to maximize useful defects found: prefer false positives downgraded to info over false negatives, " +
-      "but never contradict the verified structural counts in the GROUND TRUTH block (those are machine-counted). " +
+  "You are a strict HTML validator and semantic parsing engine used before production release. " +
+  "Your job is to behave like a parser-level validator, not a design reviewer. " +
+  "Inspect DOM structures individually and validate parent-child relationships, semantic correctness, HTML content-model rules, landmark usage, and structural validity. " +
+  "Maximize useful defects found: prefer false positives downgraded to warning/info over missed structural violations. " +
+  "Never invent invalid HTML rules. " +
+  "Inputs may be stripped/reduced and chunked. " +
+  "Do not flag missing scripts/styles/JSON removed during preprocessing. " +
+  "Return ONLY valid JSON." + 
+      "- Do not summarize multiple structural violations into one issue if distinct invalid DOM nodes are visible." + 
       "Inputs may be a stripped/reduced version of the page (scripts, JSON-LD, styles and inline style= are removed) and may be split into chunks; do not flag missing scripts, styles, or JSON when those were stripped. " +
       "Return ONLY valid JSON (no markdown fences, no commentary). " +
       "Every recommendation must be specific enough that a developer could apply it without guessing (name elements/attributes, suggest replacement tags or patterns).";
@@ -449,7 +672,7 @@ export async function evaluateAllWithLlm(
         "",
         'Each issue: { "severity": "error"|"warning"|"info", "issue": string, "recommendation": string (required: at least one concrete fix — element name, attribute, or example snippet), "htmlSnippet": string }',
         "",
-        "htmlSnippet: smallest meaningful DOM fragment; always prefer id=, class=, data-testid=, href=, or data-* from the real HTML so issues can be traced to source later.",
+        "htmlSnippet: smallest meaningful REAL DOM fragment from the provided HTML. Preserve exact tag names/attributes from source. Include the invalid parent-child structure whenever structural/content-model violations are reported.",
         "",
         "Scoring calibration (apply to every criterion):",
         "- 95–100: exceptionally rare; essentially no meaningful defects under this rubric.",
@@ -460,11 +683,12 @@ export async function evaluateAllWithLlm(
         "- Default skeptical: if the HTML is long or complex, scores should skew lower unless evidence supports high quality.",
         "",
         "Issue volume:",
-        "- Emit as many DISTINCT, evidence-backed issues as you can per criterion (cap 20 per criterion), ordered by severity then importance.",
-        "- Do not duplicate the same finding; split overlapping concerns into separate issues only when each has a distinct fix.",
-        "- For large documents, aim for double-digit issues per criterion when the markup provides enough surface area.",
-        "",
-        "GROUND TRUTH (static parse of the FULL document, not just this chunk; script/style/template/noscript/comments removed). These counts are authoritative — TRUST them even if the current chunk does not show the element:",
+"- Emit as many DISTINCT, evidence-backed issues as possible per criterion (target 15-40+ when applicable), ordered by severity then importance.",
+"- Do NOT collapse repeated semantic/content-model violations into a single generic issue when separate DOM nodes are involved.",
+"- Repeated structural violations may be grouped only if the htmlSnippet clearly demonstrates the repeated pattern.",
+"- Prefer false positives downgraded to warning/info over missed structural violations.",
+"- For semanticHtml and w3cCompliance, behave like a strict validator, not a reviewer.",
+"- Repeated structural violations must significantly reduce score.",
         `- Literal <h1> opening tags in the FULL document: ${h1Count}.`,
         h1Count >= 1
           ? `  * Because <h1> count >= 1, you MUST NOT emit any issue claiming "missing <h1>", "no <h1>", "absent <h1>", "lacking a primary <h1>", or "missing a clear/unique <h1>". Heading hierarchy or wording critique is fine.`
@@ -604,7 +828,8 @@ export async function evaluateAllWithLlm(
       h1Count,
       mainCount,
       html,
-    });
+    },deterministicSemanticIssues
+  );
     return { allAuditScore: merged };
   } catch (e) {
     if (e instanceof LlmConfigError) {
