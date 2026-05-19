@@ -1,7 +1,8 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { AlertCircle, CheckCircle2, AlertTriangle, Info, ChevronDown, GitBranch } from "lucide-react";
+import { AlertCircle, CheckCircle2, AlertTriangle, Info, ChevronDown, GitBranch, Code2, FileDown } from "lucide-react";
+import { downloadAuditPdf } from "@/lib/generatePdf";
 import { Button } from "@/components/ui/button";
 import { useState } from "react";
 
@@ -17,6 +18,14 @@ interface CriterionResult {
   issues: Issue[];
 }
 
+interface HtmlSegmentRatio {
+  tagName: string;
+  snippet: string;
+  ratio: number;
+  markupBytes: number;
+  visibleChars: number;
+}
+
 interface docResult {
   size: number;
   recommendation: string;
@@ -24,6 +33,7 @@ interface docResult {
   markupHtmlBytes?: number;
   visibleTextChars?: number;
   htmlToTextRatio?: number;
+  topBloatedSegments?: HtmlSegmentRatio[];
 }
 
 interface AuditReportData {
@@ -40,6 +50,7 @@ const DIR_FIX_BRANCH = "html-audit-suggestion";
 
 interface AuditResultsProps {
   report: AuditReportData;
+  auditUrl?: string;
   dirRepoReady?: boolean;
   dirFixPending?: boolean;
   onApplyDirFixes?: () => void;
@@ -150,8 +161,40 @@ function CriterionCard({
   );
 }
 
+function BloatedSegmentRow({ rank, seg }: { rank: number; seg: HtmlSegmentRatio }) {
+  const [open, setOpen] = useState(false);
+  const ratioColor =
+    seg.ratio > 30 ? "text-red-700 bg-red-100" :
+    seg.ratio > 15 ? "text-orange-700 bg-orange-100" :
+    "text-yellow-800 bg-yellow-100";
+
+  return (
+    <Collapsible open={open} onOpenChange={setOpen}>
+      <CollapsibleTrigger asChild>
+        <div className="flex items-center gap-2 cursor-pointer rounded border border-yellow-300 bg-yellow-50 px-3 py-2 hover:bg-yellow-100 transition-colors">
+          <span className="text-xs font-bold text-yellow-800 w-4">{rank}.</span>
+          <code className="text-xs font-mono text-slate-700">&lt;{seg.tagName}&gt;</code>
+          <span className={`text-xs font-semibold px-1.5 py-0.5 rounded ${ratioColor}`}>
+            ratio {seg.ratio.toFixed(2)}
+          </span>
+          <span className="text-xs text-slate-500 ml-1">
+            {seg.markupBytes.toLocaleString()} markup bytes · {seg.visibleChars.toLocaleString()} text chars
+          </span>
+          <ChevronDown className={`h-3.5 w-3.5 ml-auto text-yellow-700 transition-transform ${open ? "rotate-180" : ""}`} />
+        </div>
+      </CollapsibleTrigger>
+      <CollapsibleContent>
+        <pre className="mt-1 text-xs bg-slate-900 text-slate-100 rounded p-3 overflow-x-auto whitespace-pre-wrap break-all leading-relaxed">
+          {seg.snippet}{seg.snippet.length >= 500 ? "\n…" : ""}
+        </pre>
+      </CollapsibleContent>
+    </Collapsible>
+  );
+}
+
 export default function AuditResults({
   report,
+  auditUrl = "",
   dirRepoReady,
   dirFixPending,
   onApplyDirFixes,
@@ -191,7 +234,20 @@ export default function AuditResults({
 
   return (
     <div className="space-y-6">
-      {/* {onApplyDirFixes && (
+      {/* Download PDF */}
+      <div className="flex justify-end">
+        <Button
+          type="button"
+          variant="outline"
+          className="gap-2 border-slate-300 text-slate-700 hover:bg-slate-50"
+          onClick={() => downloadAuditPdf(report, auditUrl)}
+        >
+          <FileDown className="w-4 h-4" />
+          Download Result
+        </Button>
+      </div>
+
+      {onApplyDirFixes && (
         <Card className="border border-indigo-200 bg-indigo-50/60">
           <CardContent className="pt-4 pb-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             <div>
@@ -227,7 +283,7 @@ export default function AuditResults({
             </Button>
           </CardContent>
         </Card>
-      )} */}
+      )}
 
       {/* Overall Score */}
       <Card className="border-2">
@@ -296,6 +352,22 @@ export default function AuditResults({
                     <span style={{ color: '#6666ff' }}>{report.docSize.recommendation}</span>
                   </p>
                 </div>
+
+                {report.docSize.topBloatedSegments && report.docSize.topBloatedSegments.length > 0 && (
+                  <div className="mt-4">
+                    <div className="flex items-center gap-2 mb-3">
+                      <Code2 className="h-4 w-4 text-yellow-700" />
+                      <span className="font-semibold text-sm text-yellow-900">
+                        Top {report.docSize.topBloatedSegments.length} highest HTML-to-text ratio segments
+                      </span>
+                    </div>
+                    <div className="space-y-2">
+                      {report.docSize.topBloatedSegments.map((seg, i) => (
+                        <BloatedSegmentRow key={i} rank={i + 1} seg={seg} />
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             </CardContent>
           </Card>

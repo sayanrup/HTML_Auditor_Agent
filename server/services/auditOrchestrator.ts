@@ -1,5 +1,6 @@
 import { analyzeAll } from "../auditors/auditors";
-import { computeHtmlTextMetrics } from "./htmlTextMetrics";
+import { computeHtmlTextMetrics, findTopBloatedSegments, type HtmlSegmentRatio } from "./htmlTextMetrics";
+export type { HtmlSegmentRatio };
 
 export interface AuditIssue {
   severity: "error" | "warning" | "info";
@@ -24,6 +25,8 @@ export interface docResult {
   visibleTextChars: number;
   /** `markupHtmlBytes / visibleTextChars` — markup per visible text character. */
   htmlToTextRatio: number;
+  /** Top 5 non-overlapping HTML segments ranked by HTML-to-text ratio (highest first). */
+  topBloatedSegments: HtmlSegmentRatio[];
 }
 
 export interface AuditReport {
@@ -39,6 +42,7 @@ export interface AuditReport {
 export async function performAudit(html: string, llm_api_key: string, llm_model: string): Promise<AuditReport> {
   const { allAuditScore } = await analyzeAll(html, llm_api_key, llm_model);
   const textMetrics = computeHtmlTextMetrics(html);
+  const topBloatedSegments = findTopBloatedSegments(html, 5);
 
   const {
     llmFriendly,
@@ -73,6 +77,7 @@ export async function performAudit(html: string, llm_api_key: string, llm_model:
       markupHtmlBytes: textMetrics.markupHtmlBytes,
       visibleTextChars: textMetrics.visibleTextChars,
       htmlToTextRatio: textMetrics.htmlToTextRatio,
+      topBloatedSegments,
     },
   };
 }

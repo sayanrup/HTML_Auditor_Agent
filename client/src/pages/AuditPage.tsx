@@ -7,12 +7,14 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Loader2, Settings, Info } from "lucide-react";
+import { Loader2, Settings, Info, Bot, Code2 } from "lucide-react";
 import { toast } from "sonner";
 import AuditResults from "@/components/AuditResults";
 import SettingsModal from "@/SettingModal";
 import InfoModal from "@/InfoModal";
 import FeedbackModal from "@/FeedbackModal";
+
+type AuditMode = "ai" | "rules";
 
 type Config = {
   llm_api_key?: string;
@@ -32,6 +34,7 @@ export default function AuditPage() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [infoOpen, setInfoOpen] = useState(false);
   const [feedbackOpen, setFeedbackOpen] = useState(false);
+  const [auditMode, setAuditMode] = useState<AuditMode>("ai");
 
   const publicInfoQuery = trpc.system.publicInfo.useQuery(undefined, {
     staleTime: 5 * 60_000,
@@ -46,6 +49,18 @@ export default function AuditPage() {
     onError: (error) => {
       setIsLoading(false);
       toast.error(error.message || "Failed to perform audit");
+    },
+  });
+
+  const performRuleBasedAuditMutation = trpc.audit.performRuleBasedAudit.useMutation({
+    onSuccess: (data) => {
+      setAuditReport(data);
+      setIsLoading(false);
+      toast.success("Rule-based audit completed!");
+    },
+    onError: (error) => {
+      setIsLoading(false);
+      toast.error(error.message || "Failed to perform rule-based audit");
     },
   });
 
@@ -87,7 +102,7 @@ export default function AuditPage() {
       return;
     }
 
-    if (!config?.llm_api_key || !config?.llm_model) {
+    if (auditMode === "ai" && (!config?.llm_api_key || !config?.llm_model)) {
       toast.error("Please enter your API key and Model in top right settings");
       return;
     }
@@ -101,7 +116,11 @@ export default function AuditPage() {
     }
 
     setIsLoading(true);
-    performAuditMutation.mutate({ url , llm_api_key: config!.llm_api_key!, llm_model: config!.llm_model!});
+    if (auditMode === "ai") {
+      performAuditMutation.mutate({ url, llm_api_key: config!.llm_api_key!, llm_model: config!.llm_model! });
+    } else {
+      performRuleBasedAuditMutation.mutate({ url });
+    }
   };
 
   const handleSaveConfig = async (newCfg: Config) => {
@@ -177,7 +196,41 @@ export default function AuditPage() {
             <CardTitle>Audit a Page</CardTitle>
             <CardDescription>Enter a URL to start the comprehensive audit</CardDescription>
           </CardHeader>
-          <CardContent>
+          <CardContent className="space-y-4">
+            {/* Mode toggle */}
+            <div className="flex gap-2 p-1 bg-slate-100 rounded-lg w-fit">
+              <button
+                type="button"
+                onClick={() => { setAuditMode("ai"); setAuditReport(null); }}
+                className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-all ${
+                  auditMode === "ai"
+                    ? "bg-white text-slate-900 shadow-sm"
+                    : "text-slate-500 hover:text-slate-700"
+                }`}
+              >
+                <Bot className="w-4 h-4" />
+                AI Audit
+              </button>
+              <button
+                type="button"
+                onClick={() => { setAuditMode("rules"); setAuditReport(null); }}
+                className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-all ${
+                  auditMode === "rules"
+                    ? "bg-white text-slate-900 shadow-sm"
+                    : "text-slate-500 hover:text-slate-700"
+                }`}
+              >
+                <Code2 className="w-4 h-4" />
+                Rule-based
+              </button>
+            </div>
+
+            {auditMode === "rules" && (
+              <p className="text-xs text-slate-500">
+                Rule-based audit runs entirely on the server with no AI or API key required. Results are deterministic.
+              </p>
+            )}
+
             <form onSubmit={handleAudit} className="flex gap-2">
               <Input
                 type="url"
@@ -205,6 +258,7 @@ export default function AuditPage() {
         {auditReport && (
           <AuditResults
             report={auditReport}
+            auditUrl={url}
             dirRepoReady={publicInfoQuery.data?.dirRepoReady}
             dirFixPending={applyDirMutation.isPending}
             onApplyDirFixes={() => {

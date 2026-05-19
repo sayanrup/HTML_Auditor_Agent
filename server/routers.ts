@@ -5,6 +5,7 @@ import {
   performAudit,
   type AuditReport,
 } from "./services/auditOrchestrator";
+import { performRuleBasedAudit } from "./services/ruleBasedAuditor";
 import { addFeedback, listFeedback } from "./services/feedbackStore";
 import { applyAuditRecommendationsToDir } from "./services/dirRepoFixes";
 import { z } from "zod";
@@ -87,6 +88,23 @@ export const appRouter = router({
         }
 
         return report;
+      }),
+    performRuleBasedAudit: publicProcedure
+      .input(z.object({ url: z.string().url() }))
+      .mutation(async ({ input }) => {
+        const { url } = input;
+
+        let fetchResult = await fetchPageHtml(url);
+        for (let attempt = 0; attempt < HTML_AUDIT_RETRY_COUNT; attempt++) {
+          if (fetchResult.success && fetchResult.html) break;
+          await delay(100 * (attempt + 1));
+          fetchResult = await fetchPageHtml(url);
+        }
+        if (!fetchResult.success || !fetchResult.html) {
+          throw new Error(fetchResult.error || "Failed to fetch page");
+        }
+
+        return performRuleBasedAudit(fetchResult.html);
       }),
     applyRecommendationsToDir: publicProcedure
       .input(

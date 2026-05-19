@@ -127,6 +127,109 @@ export type HtmlTextMetrics = {
   htmlToTextRatio: number;
 };
 
+export type HtmlSegmentRatio = {
+  tagName: string;
+  /** Raw HTML snippet (≤ 500 chars) of the segment. */
+  snippet: string;
+  ratio: number;
+  markupBytes: number;
+  visibleChars: number;
+};
+
+const BLOCK_TAGS_FOR_RATIO = [
+  "div", "section", "article", "nav", "header", "footer", "aside", "main",
+  "ul", "ol", "table",
+];
+
+/**
+ * Find the top N non-overlapping HTML block segments with the highest HTML-to-text ratio.
+ * Segments under 300 bytes or over 60 KB are skipped to focus on meaningful structural bloat.
+ */
+export function findTopBloatedSegments(html: string, topN = 5): HtmlSegmentRatio[] {
+  const candidates: Array<HtmlSegmentRatio & { startIdx: number; endIdx: number }> = [];
+  const MAX_CANDIDATES = 80;
+
+  for (const tag of BLOCK_TAGS_FOR_RATIO) {
+    if (candidates.length >= MAX_CANDIDATES) break;
+    const openRe = new RegExp(`<${tag}(\\s[^>]*)?>`, "gi");
+    let m: RegExpExecArray | null;
+    while ((m = openRe.exec(html)) !== null) {
+      if (candidates.length >= MAX_CANDIDATES) break;
+      const startIdx = m.index;
+      const innerRe = new RegExp(`<(\\/?)${tag}\\b[^>]*>`, "gi");
+      innerRe.lastIndex = m.index + m[0].length;
+      let depth = 1;
+      let nm: RegExpExecArray | null;
+      while ((nm = innerRe.exec(html)) !== null) {
+        if (nm[1] === "/") {
+          depth--;
+          if (depth === 0) {
+            const endIdx = nm.index + nm[0].length;
+            const segLen = endIdx - startIdx;
+            if (segLen >= 300 && segLen <= 60_000) {
+              const segHtml = html.slice(startIdx, endIdx);
+              const stripped = stripNonContentRegions(segHtml);
+              const markupHtml = stripCssMarkersFromMarkup(stripped);
+              const markupBytes = Buffer.byteLength(markupHtml, "utf8");
+              let text = stripped.replace(/<[^>]+>/g, " ");
+              text = decodeBasicEntities(text);
+              text = text.replace(/\s+/g, " ").trim();
+              const visibleChars = text.length;
+              if (visibleChars >= 5) {
+                candidates.push({
+                  tagName: tag,
+                  snippet: segHtml.slice(0, 500),
+                  ratio: Math.round((markupBytes / visibleChars) * 100) / 100,
+                  markupBytes,
+                  visibleChars,
+                  startIdx,
+                  endIdx,
+                });
+              }
+            }
+            break;
+          }
+        } else {
+          depth++;
+        }
+      }
+    }
+  }
+
+  candidates.sort((a, b) => b.ratio - a.ratio);
+
+  const result: HtmlSegmentRatio[] = [];
+  const usedRanges: Array<{ start: number; end: number }> = [];
+  const seenStructure = new Set<string>();
+
+  for (const c of candidates) {
+    // Skip DOM regions that overlap with an already-selected segment.
+    const overlaps = usedRanges.some(
+      (r) => c.startIdx < r.end && c.endIdx > r.start
+    );
+    if (overlaps) continue;
+
+    // Skip structurally identical snippets (same tag skeleton, regardless of
+    // attribute values or text content) so repeated patterns such as nav items
+    // or product cards don't fill all 5 slots with the same structure.
+    const structKey = c.snippet
+      .replace(/=["'][^"']*["']/g, '=""') // normalise all attr values → ""
+      .replace(/>[^<]*</g, "><")          // strip text nodes between tags
+      .replace(/\s+/g, " ")
+      .trim()
+      .slice(0, 200);
+    if (seenStructure.has(structKey)) continue;
+
+    usedRanges.push({ start: c.startIdx, end: c.endIdx });
+    seenStructure.add(structKey);
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { startIdx: _s, endIdx: _e, ...rest } = c;
+    result.push(rest);
+    if (result.length >= topN) break;
+  }
+  return result;
+}
+
 export function computeHtmlTextMetrics(html: string): HtmlTextMetrics {
   const htmlBytes = Buffer.byteLength(html, "utf8");
   const stripped = stripNonContentRegions(html);

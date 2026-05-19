@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__ide__getDiagnostics",
+      "PowerShell(Get-ChildItem -Path \"c:\\\\Users\\\\Imart\\\\Desktop\\\\scm_repo\\\\im-audit-agent\" -Recurse -Directory | Select-Object -First 30 | ForEach-Object { $_.FullName })",
+      "Bash(npm install *)",
+      "Bash(node -e \"require\\('./node_modules/jspdf/dist/jspdf.node.js'\\)\")",
+      "Bash(npx tsc *)"
+    ]
+  }
+}

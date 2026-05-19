@@ -2,6 +2,7 @@ import { z } from "zod";
 import { llmCompleteJson, LlmConfigError } from "./llmClient";
 import { countOpenTags } from "./htmlAuditFacts";
 import { chunkHtmlForLlm, DEFAULT_MAX_PAYLOAD_BYTES } from "./htmlForLlm";
+import { computeHtmlTextMetrics } from "./htmlTextMetrics";
 
 const AuditIssueSchema = z.object({
   severity: z.enum(["error", "warning", "info"]),
@@ -36,113 +37,17 @@ const AllAuditScoreSchema = z.object({
 export type AllAuditScore = z.infer<typeof AllAuditScoreSchema>;
 
 const RUBRICS = {
-  llmFriendly: `Act as a harsh senior reviewer optimizing HTML for machine and human readers. Assume the page will be crawled, archived, and parsed by tools with no JavaScript.
-Be exhaustive: heading order and count (missing, duplicate, or skipped levels), one clear topical <h1>, landmark coverage (<main>, nav regions), link and button text quality (avoid "click here", empty anchors, icon-only controls without accessible names in markup), media and embed noise, tables used for layout, microdata/schema gaps that hurt extraction, duplicate or boilerplate blocks, deep wrapper chains, meaningless class/id soup, hidden text tricks, and reliance on client-only rendering.
-Treat "good enough" marketing HTML as mediocre: every avoidable div wrapper, unclear section boundary, or weak list/table structure is a finding. Prefer many specific issues with actionable recommendations over a high score.`,
+  llmFriendly: `HTML reviewer for machine+human readers; assume no-JS crawling. Flag: wrong/skipped/duplicate heading levels, weak landmark coverage (<main>, nav), layout tables, schema/microdata gaps, duplicate blocks, deep wrapper nesting, hidden text, JS-only content. Every avoidable wrapper is a finding. Prefer many specific issues over a high score.`,
 
-  w3cCompliance: `Act as a strict HTML validator. Perform parser-level structural and content-model validation, not visual review.
-Aggressively detect malformed or semantically invalid HTML structures.
+  w3cCompliance: `Parser-level HTML validator. Detect: invalid parent-child nesting, malformed table/list/form structure, nested interactives, bad label associations, heading order errors, duplicate IDs, deprecated tags/attrs, block elements in prohibited parents. Enforce direct-child rules for: dl, ul, ol, table, tr, thead, tbody, select, picture, ruby. VALID: <div><p>…</p></div>, block inside <div>, valid nested sectioning. Never invent invalid rules. Repeated violations must cut score.`,
 
-Validate:
-- invalid parent-child relationships
-- invalid direct children
-- invalid table/list/form structure
-- nested interactive elements
-- invalid label associations
-- invalid heading nesting/order
-- duplicate ids
-- deprecated/obsolete tags and attributes
-- malformed attributes
-- block elements inside prohibited parents
-- invalid semantic/content-model nesting
+  seo: `SEO pre-launch audit. Check: title/meta-description length, canonical, robots, hreflang, title/desc consistency, heading keyword fit (no stuffing), internal link anchor quality, JSON-LD presence+entity correctness, FAQ/HowTo/Product schema misuse, pagination, mobile meta. Flag every defensible gap. Out of scope: site authority, og:* tags (never report).`,
 
-Strictly validate direct-child requirements for:
-- dl
-- ul
-- ol
-- table
-- tr
-- thead
-- tbody
-- select
-- picture
-- ruby
+  semanticHtml: `Parser-level semantic HTML validator. Enforce: landmarks, heading hierarchy, lists, tables, forms, button-vs-link, figure/figcaption, minimal div/span. Flag: div/span soup; missing/redundant landmarks; section/article without heading; wrong heading order; style-only headings; layout tables; misused article/section/nav/aside/main/header/footer; visual lists/nav without semantic markup; ARIA-vs-native conflicts; invalid parent-child. Enforce content-model: dl→dt/dd only; ul/ol→li only; valid select/table children; no block inside p; no nested interactives; valid label association; valid figure. Inspect each element individually — distinct DOM nodes = separate findings; group only when same structural pattern. VALID: <div><p>…</p></div>. Weakness→warning; content-model violation→error. Never invent invalid rules.`,
 
-Do NOT invent invalid HTML rules.
-Examples of VALID structures:
-- <div><p>...</p></div>
-- block content inside <div>
-- valid nested sectioning content
+  accessibility: `WCAG 2.1 A/AA (HTML-inferable only). Flag: missing/wrong html[lang], heading hierarchy breaks, missing/empty image alt, unlabelled form controls, new-window links without text warning, skip link absent on complex layouts, keyboard-trap markup, tabindex misuse, wrong/redundant ARIA roles, aria-hidden on important content, missing radio fieldset, missing table headers, positive-tabindex focus risks. error=rule break; warning=likely issue; info=best practice. More findings over benefit of the doubt.`,
 
-Repeated structural violations must significantly reduce score.`,
-
-  seo: `Audit like an SEO lead before launch. Scrutinize: title length and uniqueness, meta description length and duplication, canonical and robots directives, hreflang hints if present, Twitter Card completeness and consistency with title/description, heading keyword alignment without stuffing, image alts for meaningful images, internal link quality (generic anchor text, nofollow misuse), thin or duplicate body copy signals, JSON-LD presence, correctness and entity coverage, FAQ/HowTo/Product misuse, pagination/meta robots, and mobile-oriented meta.
-List every defensible improvement (missing tags, weak copy, missing structured data for obvious product/article/listing pages, etc.). Site-wide authority is out of scope; Open Graph (og:*) tags are explicitly out of scope and must NOT be reported. Everything else in the HTML is fair game.`,
-
-  semanticHtml: `Act as a strict semantic HTML validator, not just a reviewer. Perform parser-level semantic and content-model validation across the provided HTML.
-
-Expect correct use of:
-- semantic landmarks
-- headings
-- lists
-- tables
-- forms
-- buttons vs links
-- figure/figcaption
-- minimal div/span-only markup
-
-Aggressively detect weak, invalid, ambiguous, or non-standard semantics even when visually functional.
-
-Flag:
-- div/span soup
-- missing/multiple/redundant landmarks
-- section/article without headings
-- incorrect heading hierarchy
-- headings used only for styling
-- layout tables
-- empty semantic containers
-- misuse of article/section/nav/aside/main/header/footer
-- visual lists/cards/navigation without semantic structure
-- conflicting native vs ARIA semantics
-- invalid semantic nesting
-- disallowed parent-child relationships
-
-Strictly validate content-model rules including:
-- dl with non-dt/dd direct children
-- ul/ol with non-li direct children
-- select with invalid children
-- table with invalid direct children
-- p wrapping prohibited block-level elements
-- nested interactive elements
-- invalid label-control association
-- invalid form/list/table nesting
-- invalid heading nesting
-- invalid figure usage
-
-Inspect EVERY semantic/container element individually.
-Do not stop after finding one example.
-Do not summarize multiple structural violations into one issue if distinct DOM nodes are visible.
-Repeated violations should generate multiple findings when separate DOM nodes are involved.
-
-Do NOT invent invalid HTML rules.
-Examples of VALID structures:
-- <div><p>...</p></div>
-
-Prefer many specific findings over broad summaries.
-Treat semantic weaknesses as warnings and invalid content-model violations as errors.` + 
-
-"Semantic/content-model validation rules:" +
-"  * Validate direct-child requirements and parent-child restrictions strictly." +
-"  * Inspect lists, tables, forms, dl/dt/dd structures, interactive elements, and heading structures individually." +
-"  * Report EACH invalid semantic/container structure when distinct DOM nodes are involved." +
-"  * Do not assume browser auto-correction makes invalid HTML acceptable." +
-"  * Do not report valid HTML structures as invalid." +
-"  * <div><p>...</p></div> is VALID HTML.",
-
-  accessibility: `Use a WCAG 2.1 mindset (A/AA where inferable from HTML only). Aggressively flag: missing or wrong lang on html, missing document title, heading hierarchy breaks, images missing or useless alt, decorative images not marked, form controls without labels or with poor label association, placeholder-only labels, links opening in new windows without warning in text, skip link absence on complex layouts, keyboard traps suggested by markup, tabindex abuse, redundant or wrong ARIA roles, aria-hidden on important content, missing fieldset for radio groups, table headers missing, and focus order risks from tabindex or positive tabindex.
-Use severity: error when the HTML clearly breaks a rule; warning when likely problematic; info for best-practice upgrades. Prefer more findings with concrete markup fixes over giving the benefit of the doubt.`,
-
-  docSize: `Assess payload weight and markup bloat. Call out inline styles, large JSON-LD or data blobs in HTML, redundant third-party script/link tags, duplicate CSS links, and opportunities to defer, bundle, or move config off the critical HTML path. The recommendation string must list 3–6 concrete, prioritized tactics (short clauses separated by semicolons or numbered steps).`,
+  docSize: `Payload + markup bloat. HTML-to-text ratio is pre-computed and provided — cite it in recommendation. Flag: inline styles, inlined JSON-LD/data blobs, redundant script/link tags, duplicate CSS, deep wrapper nesting. Recommendation: 3–6 concrete tactics (semicolons or numbered steps).`,
 };
 
 type GroundTruth = { h1Count: number; mainCount: number; html: string };
@@ -540,7 +445,7 @@ function makeFallbackAllResult(issue: string, recommendation: string): AllAuditS
   };
 }
 
-function runDeterministicSemanticChecks(html: string): AuditScore["issues"] {
+export function runDeterministicSemanticChecks(html: string): AuditScore["issues"] {
   const issues: AuditScore["issues"] = [];
   const seen = new Set<string>();
   const directChildRules: Record<string, string[]> = {
@@ -638,6 +543,7 @@ export async function evaluateAllWithLlm(
     const htmlSize = Buffer.byteLength(html, "utf8");
     const h1Count = countOpenTags(html, "h1");
     const mainCount = countOpenTags(html, "main");
+    const { htmlToTextRatio } = computeHtmlTextMetrics(html);
     const deterministicSemanticIssues =
   runDeterministicSemanticChecks(html);
 
@@ -648,72 +554,36 @@ export async function evaluateAllWithLlm(
     );
 
     const systemPrompt =
-  "You are a strict HTML validator and semantic parsing engine used before production release. " +
-  "Your job is to behave like a parser-level validator, not a design reviewer. " +
-  "Inspect DOM structures individually and validate parent-child relationships, semantic correctness, HTML content-model rules, landmark usage, and structural validity. " +
-  "Maximize useful defects found: prefer false positives downgraded to warning/info over missed structural violations. " +
-  "Never invent invalid HTML rules. " +
-  "Inputs may be stripped/reduced and chunked. " +
-  "Do not flag missing scripts/styles/JSON removed during preprocessing. " +
-  "Return ONLY valid JSON." + 
-      "- Do not summarize multiple structural violations into one issue if distinct invalid DOM nodes are visible." + 
-      "Inputs may be a stripped/reduced version of the page (scripts, JSON-LD, styles and inline style= are removed) and may be split into chunks; do not flag missing scripts, styles, or JSON when those were stripped. " +
-      "Return ONLY valid JSON (no markdown fences, no commentary). " +
-      "Every recommendation must be specific enough that a developer could apply it without guessing (name elements/attributes, suggest replacement tags or patterns).";
+      "Strict parser-level HTML validator and semantic engine, not a design reviewer. " +
+      "Inspect each DOM element individually; validate parent-child relationships, content-model rules, landmark usage, and structural correctness. " +
+      "Prefer false positives downgraded to warning/info over missed violations. Never invent invalid HTML rules. " +
+      "Input is preprocessed: scripts, JSON-LD, styles, and inline style= removed; HTML may be chunked — do not flag absent scripts/styles/JSON. " +
+      "Distinct structural violations on separate DOM nodes must be reported separately. " +
+      "Return ONLY valid JSON (no markdown). Recommendations must name elements, attributes, or show example patterns.";
 
     const buildUserPrompt = (chunk: string, idx: number, total: number): string =>
       [
         total > 1
-          ? `Evaluate the provided HTML CHUNK ${idx + 1} of ${total} across all five scored criteria below and return a single JSON object covering only what is visible in this chunk.`
-          : "Evaluate the provided HTML across all five scored criteria below and return a single JSON object.",
+          ? `Evaluate HTML CHUNK ${idx + 1}/${total} across all five criteria; return a JSON object covering only what is visible in this chunk.`
+          : "Evaluate the HTML across all five criteria; return a single JSON object.",
         "",
-        "Return JSON with this exact schema:",
-        '{ "llmFriendly": { "score": number(0-100), "issues": [...] }, "w3cCompliance": { "score": number(0-100), "issues": [...] }, "seo": { "score": number(0-100), "issues": [...] }, "semanticHtml": { "score": number(0-100), "issues": [...] }, "accessibility": { "score": number(0-100), "issues": [...] }, "docSize":{"size": number, "recommendation":""} }',
+        "Schema:",
+        '{ "llmFriendly":{"score":0-100,"issues":[...]}, "w3cCompliance":{"score":0-100,"issues":[...]}, "seo":{"score":0-100,"issues":[...]}, "semanticHtml":{"score":0-100,"issues":[...]}, "accessibility":{"score":0-100,"issues":[...]}, "docSize":{"size":number,"recommendation":""} }',
+        'Issue: { "severity":"error"|"warning"|"info", "issue":string, "recommendation":string, "htmlSnippet":string }',
+        "htmlSnippet: smallest real DOM fragment from the source HTML; exact tag names/attrs; include invalid parent-child for content-model violations.",
         "",
-        'Each issue: { "severity": "error"|"warning"|"info", "issue": string, "recommendation": string (required: at least one concrete fix — element name, attribute, or example snippet), "htmlSnippet": string }',
+        "Scores: 95–100 near-perfect; 80–94 solid with fixable gaps; 60–79 typical production gaps; 40–59 release-blocking; 0–39 severe. Be skeptical — complex/long HTML skews lower.",
+        "Issues: 15–40+ distinct evidence-backed findings per criterion (severity→importance). Separate DOM nodes = separate findings; group only when same structural pattern. semanticHtml/w3cCompliance: validator mode. Repeated violations cut score.",
         "",
-        "htmlSnippet: smallest meaningful REAL DOM fragment from the provided HTML. Preserve exact tag names/attributes from source. Include the invalid parent-child structure whenever structural/content-model violations are reported.",
+        `- HTML-to-text ratio: ${htmlToTextRatio.toFixed(2)} (markup bytes incl. tags ÷ visible text chars; scripts/CSS/JSON excluded). ≤5 lean; 5–15 normal; 15–30 bloat; >30 heavy. Cite in docSize recommendation.`,
+        `- <h1> count: ${h1Count}. ${h1Count >= 1 ? "MUST NOT report missing h1 (hierarchy/wording critique OK)." : "May report missing h1."} ${h1Count <= 1 ? "MUST NOT report duplicate h1." : `Duplicate h1 flaggable (count=${h1Count}).`}`,
+        `- <main> count: ${mainCount}. ${mainCount >= 1 ? "MUST NOT report missing main." : "May report missing main."} ${mainCount <= 1 ? "MUST NOT report multiple main." : `Multiple main flaggable (count=${mainCount}).`}`,
+        "- OUT OF SCOPE: og:* / Open Graph tags — never report.",
         "",
-        "Scoring calibration (apply to every criterion):",
-        "- 95–100: exceptionally rare; essentially no meaningful defects under this rubric.",
-        "- 80–94: strong but still has several minor or moderate issues worth fixing.",
-        "- 60–79: typical production marketing/content pages with multiple clear gaps.",
-        "- 40–59: serious problems; would block a strict release review.",
-        "- 0–39: severe or pervasive failures.",
-        "- Default skeptical: if the HTML is long or complex, scores should skew lower unless evidence supports high quality.",
-        "",
-        "Issue volume:",
-"- Emit as many DISTINCT, evidence-backed issues as possible per criterion (target 15-40+ when applicable), ordered by severity then importance.",
-"- Do NOT collapse repeated semantic/content-model violations into a single generic issue when separate DOM nodes are involved.",
-"- Repeated structural violations may be grouped only if the htmlSnippet clearly demonstrates the repeated pattern.",
-"- Prefer false positives downgraded to warning/info over missed structural violations.",
-"- For semanticHtml and w3cCompliance, behave like a strict validator, not a reviewer.",
-"- Repeated structural violations must significantly reduce score.",
-        `- Literal <h1> opening tags in the FULL document: ${h1Count}.`,
-        h1Count >= 1
-          ? `  * Because <h1> count >= 1, you MUST NOT emit any issue claiming "missing <h1>", "no <h1>", "absent <h1>", "lacking a primary <h1>", or "missing a clear/unique <h1>". Heading hierarchy or wording critique is fine.`
-          : `  * Because <h1> count is 0, you may report a missing primary <h1>.`,
-        h1Count <= 1
-          ? `  * You MUST NOT report duplicate/multiple <h1> elements (count <= 1).`
-          : `  * Multiple <h1> elements detected (count = ${h1Count}); flagging duplicates is appropriate.`,
-        `- Literal <main> opening tags in the FULL document: ${mainCount}.`,
-        mainCount >= 1
-          ? `  * Because <main> count >= 1, do NOT emit "missing <main>" / "no <main>" / "lacking <main>" issues.`
-          : `  * Because <main> count is 0, you may report a missing <main> landmark.`,
-        mainCount <= 1
-          ? `  * Do NOT report multiple <main> elements (count <= 1).`
-          : `  * Multiple <main> elements detected (count = ${mainCount}); flagging duplicates is appropriate.`,
-        "",
-        "OUT OF SCOPE — do NOT emit these issues:",
-        "- Open Graph / og:* meta tags (any issue about og:title, og:description, og:image, og:type, og:url, missing/incorrect Open Graph, etc.).",
-        "",
-        "Semantic-wrapper caveat: before suggesting that an element be wrapped in or replaced with <article>, <section>, <main>, <header>, <footer>, <nav>, <aside>, or <figure>:",
-        "  * Locate the ACTUAL element in the provided HTML by its id, class, or data-attribute. Do NOT guess or change the tag name. If the real element is already <article class=\"x\"> in the HTML, do not write <div class=\"x\"> in your htmlSnippet — copy the exact opening tag from the source.",
-        "  * Verify the element is not already that semantic tag itself, and that none of its ancestors in the actual HTML are that tag. If either is true, skip the issue.",
-        "  * For example: if the HTML contains <article class=\"slider-card\">..</article>, do NOT recommend wrapping product cards in <article> — it is already an <article>.",
+        "Semantic-wrapper rule: before suggesting wrap/replace with article/section/main/header/footer/nav/aside/figure — verify element is not already that tag and has no ancestor of that tag in the HTML. Copy exact opening tag from source into htmlSnippet. Skip if already satisfied.",
         "",
         total > 1
-          ? "Note: the page was split into chunks for size. The first chunk contains <head> (use it for SEO/meta/title/lang/canonical findings). Skip cross-chunk uniqueness checks (e.g. duplicate IDs page-wide) — report only what you can see in this chunk."
+          ? "Chunked page: chunk 1 has <head> (SEO/meta/lang/canonical findings). Skip cross-chunk uniqueness checks — report only what is visible in this chunk."
           : "",
         "",
         combinedRubric,
