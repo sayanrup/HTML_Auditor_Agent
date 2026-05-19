@@ -247,7 +247,7 @@ export default function AuditResults({
         </Button>
       </div>
 
-      {onApplyDirFixes && (
+      {/* {onApplyDirFixes && (
         <Card className="border border-indigo-200 bg-indigo-50/60">
           <CardContent className="pt-4 pb-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             <div>
@@ -283,7 +283,7 @@ export default function AuditResults({
             </Button>
           </CardContent>
         </Card>
-      )}
+      )} */}
 
       {/* Overall Score */}
       <Card className="border-2">
