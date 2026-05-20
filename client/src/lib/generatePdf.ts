@@ -35,6 +35,19 @@ interface AuditReportData {
     visibleTextChars?: number;
     htmlToTextRatio?: number;
     topBloatedSegments?: HtmlSegmentRatio[];
+    jsChars?: number;
+    jsCharsApp?: number;
+    jsFilesTotal?: number;
+    jsFilesPackage?: number;
+    jsToTextRatio?: number;
+    jsToTextRatioApp?: number;
+    cssChars?: number;
+    cssCharsApp?: number;
+    cssExtCount?: number;
+    cssExtPackage?: number;
+    cssInlineCount?: number;
+    cssToTextRatio?: number;
+    cssToTextRatioApp?: number;
   };
 }
 
@@ -224,6 +237,15 @@ function renderDocSize(b: PdfBuilder, docSize: AuditReportData["docSize"]) {
       : []),
     ...(docSize.htmlToTextRatio != null
       ? [`HTML-to-text ratio: ${docSize.htmlToTextRatio.toFixed(2)} — markup bytes (incl. tags, excl. scripts/CSS/JSON) per visible text char`]
+      : []),
+    ...(docSize.jsToTextRatio != null
+      ? [`JS (imimg.com, incl. packages) ratio: ${docSize.jsToTextRatio.toFixed(2)} — ${docSize.jsFilesTotal ?? 0} files (${docSize.jsFilesPackage ?? 0} pkg), ${(docSize.jsChars ?? 0).toLocaleString()} chars`]
+      : []),
+    ...(docSize.jsToTextRatioApp != null
+      ? [`JS (imimg.com, app only) ratio: ${docSize.jsToTextRatioApp.toFixed(2)} — excl. ${docSize.jsFilesPackage ?? 0} vendor/pkg bundle(s), ${(docSize.jsCharsApp ?? 0).toLocaleString()} chars`]
+      : []),
+    ...(docSize.cssToTextRatio != null
+      ? [`CSS (imimg.com + inline) ratio: ${docSize.cssToTextRatio.toFixed(2)} — ${docSize.cssExtCount ?? 0} ext + ${docSize.cssInlineCount ?? 0} inline <style>, ${(docSize.cssChars ?? 0).toLocaleString()} chars total`]
       : []),
     ...(docSize.markupHtmlBytes != null
       ? [`Markup HTML (no JS/CSS/JSON): ${(docSize.markupHtmlBytes / 1000).toFixed(1)} KB`]

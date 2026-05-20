@@ -230,6 +230,53 @@ export function findTopBloatedSegments(html: string, topN = 5): HtmlSegmentRatio
   return result;
 }
 
+export type JsCssMetrics = {
+  /** Combined character count of fetched imimg.com CSS files + inline <style> content. */
+  cssChars: number;
+  /** Count of imimg.com external stylesheet references. */
+  cssExtCount: number;
+  /** Count of inline <style> blocks. */
+  cssInlineCount: number;
+  /** cssChars / visibleTextChars */
+  cssToTextRatio: number;
+};
+
+
+/**
+ * Parse inline CSS and count external stylesheet link tags from jsDomain.
+ * External CSS content is fetched later by Playwright (playwrightJsAnalyzer).
+ * cssChars here reflects inline <style> chars only.
+ */
+export async function computeJsCssMetrics(
+  html: string,
+  visibleTextChars: number,
+  jsDomain = "imimg.com"
+): Promise<JsCssMetrics> {
+  const escapedDomain = jsDomain.replace(/\./g, "\\.");
+
+  // Count external stylesheet link tags from jsDomain (both attribute orders) — no fetch
+  const cssUrlRe = new RegExp(
+    `<link\\b[^>]*\\brel\\s*=\\s*["']stylesheet["'][^>]*\\bhref\\s*=\\s*["'][^"']*${escapedDomain}[^"']*["'][^>]*>|` +
+    `<link\\b[^>]*\\bhref\\s*=\\s*["'][^"']*${escapedDomain}[^"']*["'][^>]*\\brel\\s*=\\s*["']stylesheet["'][^>]*>`,
+    "gi"
+  );
+  let cssExtCount = 0;
+  for (const _ of html.matchAll(cssUrlRe)) cssExtCount++;
+
+  // Inline <style> content
+  let cssInlineChars = 0;
+  let cssInlineCount = 0;
+  for (const m of html.matchAll(/<style\b[^>]*>([\s\S]*?)<\/style>/gi)) {
+    cssInlineChars += m[1].length;
+    cssInlineCount++;
+  }
+
+  const cssChars = cssInlineChars;
+  const cssToTextRatio = Math.round((cssChars / Math.max(visibleTextChars, 1)) * 100) / 100;
+
+  return { cssChars, cssExtCount, cssInlineCount, cssToTextRatio };
+}
+
 export function computeHtmlTextMetrics(html: string): HtmlTextMetrics {
   const htmlBytes = Buffer.byteLength(html, "utf8");
   const stripped = stripNonContentRegions(html);

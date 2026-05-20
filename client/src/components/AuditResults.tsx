@@ -34,6 +34,19 @@ interface docResult {
   visibleTextChars?: number;
   htmlToTextRatio?: number;
   topBloatedSegments?: HtmlSegmentRatio[];
+  jsChars?: number;
+  jsCharsApp?: number;
+  jsFilesTotal?: number;
+  jsFilesPackage?: number;
+  jsToTextRatio?: number;
+  jsToTextRatioApp?: number;
+  cssChars?: number;
+  cssCharsApp?: number;
+  cssExtCount?: number;
+  cssExtPackage?: number;
+  cssInlineCount?: number;
+  cssToTextRatio?: number;
+  cssToTextRatioApp?: number;
 }
 
 interface AuditReportData {
@@ -158,6 +171,31 @@ function CriterionCard({
         </CollapsibleContent>
       </Collapsible>
     </Card>
+  );
+}
+
+function ratioColor(ratio: number): string {
+  if (ratio > 30) return "text-red-700 font-bold";
+  if (ratio > 15) return "text-orange-600 font-semibold";
+  if (ratio > 5)  return "text-yellow-700 font-semibold";
+  return "text-green-700";
+}
+
+function RatioRow({ label, sizeLabel, ratio, notes }: {
+  label: string;
+  sizeLabel: string;
+  ratio: number;
+  notes: string;
+}) {
+  return (
+    <tr className="border-t border-yellow-200/60 odd:bg-yellow-50/40 even:bg-transparent">
+      <td className="px-3 py-2 text-yellow-900">{label}</td>
+      <td className="px-3 py-2 text-right font-mono text-yellow-900">{sizeLabel}</td>
+      <td className={`px-3 py-2 text-right font-mono ${ratioColor(ratio)}`}>
+        {ratio.toFixed(2)}
+      </td>
+      <td className="px-3 py-2 text-xs text-yellow-800/80">{notes}</td>
+    </tr>
   );
 }
 
@@ -320,36 +358,64 @@ export default function AuditResults({
             <CardContent className="pt-0 pb-4">
               <div className="space-y-3">
                 <div className="border-l-4 border-slate-200 pl-4 py-2">
-                  <div>{`Size : ${report.docSize.size / 1000} kb`}</div>
-                  {report.docSize.htmlToTextRatio != null &&
-                    report.docSize.visibleTextChars != null && (
-                      <div className="text-sm text-slate-700 mt-2 space-y-1">
-                        <div>
-                          Approx. visible text:{" "}
-                          <span>
-                            {report.docSize.visibleTextChars.toLocaleString()}{" "}
-                            characters
-                          </span>{" "}
-                          (scripts, JSON-like blocks, and markup stripped).
-                        </div>
-                        <div>
-                          HTML-to-text ratio:{" "}
-                          <span className="font-semibold">
-                            {report.docSize.htmlToTextRatio.toLocaleString(undefined, {
-                              maximumFractionDigits: 2,
-                            })}
-                          </span>{" "}
-                          UTF-8 bytes of HTML including tags (but excluding
-                          scripts, JSON-like blocks, <code className="text-xs">&lt;style&gt;</code>
-                          , stylesheet links, and inline{" "}
-                          <code className="text-xs">style=</code>) per visible text character —
-                          higher means more markup structure per unit of shown text.
-                        </div>
-                      </div>
+                  <div className="text-sm text-yellow-900/70 mb-1">
+                    Full page: <span className="font-semibold text-yellow-900">{(report.docSize.size / 1000).toFixed(1)} KB</span>
+                    {report.docSize.visibleTextChars != null && (
+                      <> &nbsp;·&nbsp; Visible text: <span className="font-semibold text-yellow-900">{report.docSize.visibleTextChars.toLocaleString()} chars</span></>
                     )}
-                  <p className="text-sm text-slate-600 mt-2">
+                  </div>
+
+                  {/* Ratio table */}
+                  {report.docSize.htmlToTextRatio != null && (
+                    <div className="overflow-x-auto mt-2">
+                      <table className="w-full text-sm border-collapse">
+                        <thead>
+                          <tr className="bg-yellow-200/60 text-yellow-900">
+                            <th className="text-left px-3 py-2 font-semibold rounded-tl">Metric</th>
+                            <th className="text-right px-3 py-2 font-semibold">Size</th>
+                            <th className="text-right px-3 py-2 font-semibold">Ratio&nbsp;<span className="font-normal text-xs opacity-75">(per text char)</span></th>
+                            <th className="text-left px-3 py-2 font-semibold rounded-tr">Notes</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          <RatioRow
+                            label="HTML markup"
+                            sizeLabel={`${((report.docSize.markupHtmlBytes ?? report.docSize.size) / 1000).toFixed(1)} KB`}
+                            ratio={report.docSize.htmlToTextRatio}
+                            notes="tags kept; excl. scripts, CSS, JSON-like blocks"
+                          />
+                          {report.docSize.jsToTextRatio != null && (
+                            <RatioRow
+                              label="JS (imimg.com, incl. packages)"
+                              sizeLabel={`${(report.docSize.jsChars ?? 0).toLocaleString()} chars`}
+                              ratio={report.docSize.jsToTextRatio}
+                              notes={`${report.docSize.jsFilesTotal ?? 0} files (${report.docSize.jsFilesPackage ?? 0} pkg)`}
+                            />
+                          )}
+                          {report.docSize.jsToTextRatioApp != null && (
+                            <RatioRow
+                              label="JS (imimg.com, app only)"
+                              sizeLabel={`${(report.docSize.jsCharsApp ?? 0).toLocaleString()} chars`}
+                              ratio={report.docSize.jsToTextRatioApp}
+                              notes={`excl. ${report.docSize.jsFilesPackage ?? 0} vendor/pkg bundle(s)`}
+                            />
+                          )}
+                          {report.docSize.cssToTextRatio != null && (
+                            <RatioRow
+                              label="CSS (imimg.com + inline)"
+                              sizeLabel={`${(report.docSize.cssChars ?? 0).toLocaleString()} chars`}
+                              ratio={report.docSize.cssToTextRatio}
+                              notes={`${report.docSize.cssExtCount ?? 0} ext + ${report.docSize.cssInlineCount ?? 0} inline <style>`}
+                            />
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+
+                  <p className="text-sm text-slate-600 mt-3">
                     <span className="font-semibold" style={{ color: '#6666ff' }}>Recommendation:</span>
-                    <span style={{ color: '#6666ff' }}>{report.docSize.recommendation}</span>
+                    <span style={{ color: '#6666ff' }}> {report.docSize.recommendation}</span>
                   </p>
                 </div>
 
@@ -400,48 +466,79 @@ export default function AuditResults({
           {report.docSize.htmlToTextRatio != null &&
             report.docSize.visibleTextChars != null && (
               <div className="mt-6 pt-6 border-t border-slate-200">
-                <div className="text-sm font-semibold text-slate-800 mb-2">
-                  HTML vs visible text
+                <div className="text-sm font-semibold text-slate-800 mb-1">
+                  Payload ratios vs visible text
                 </div>
-                <p className="text-sm text-slate-600 mb-3">
-                  Ratio = UTF-8 size of HTML <strong>with tags kept</strong>, excluding JS,
-                  JSON-like blocks, <code className="text-xs">&lt;style&gt;</code>, stylesheet{" "}
-                  <code className="text-xs">&lt;link&gt;</code>, and inline{" "}
-                  <code className="text-xs">style=</code>, divided by visible text (tags stripped
-                  from the text side). Higher = more markup per character of readable text.
+                <p className="text-xs text-slate-500 mb-3">
+                  Full page: {(report.docSize.size / 1000).toFixed(1)} KB &nbsp;·&nbsp;
+                  Visible text: {report.docSize.visibleTextChars.toLocaleString()} chars.
+                  Ratio = resource bytes ÷ visible text chars; higher = heavier per unit of content.
                 </p>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-center">
-                  <div>
-                    <div className="text-2xl font-bold text-slate-900">
-                      {report.docSize.htmlToTextRatio.toLocaleString(undefined, {
-                        maximumFractionDigits: 2,
-                      })}
-                    </div>
-                    <div className="text-xs text-slate-600 mt-1">
-                      Markup bytes (incl. tags) / text char
-                    </div>
-                  </div>
-                  <div>
-                    <div className="text-2xl font-bold text-slate-900">
-                      {report.docSize.visibleTextChars.toLocaleString()}
-                    </div>
-                    <div className="text-xs text-slate-600 mt-1">Visible text (chars)</div>
-                  </div>
-                  <div>
-                    <div className="text-2xl font-bold text-slate-900">
-                      {((report.docSize.markupHtmlBytes ?? report.docSize.size) / 1000).toFixed(1)}{" "}
-                      kb
-                    </div>
-                    <div className="text-xs text-slate-600 mt-1">
-                      Markup HTML (tags, no JS/CSS/JSON)
-                    </div>
-                  </div>
-                  <div>
-                    <div className="text-2xl font-bold text-slate-900">
-                      {(report.docSize.size / 1000).toFixed(1)} kb
-                    </div>
-                    <div className="text-xs text-slate-600 mt-1">Full wire document</div>
-                  </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm border-collapse">
+                    <thead>
+                      <tr className="bg-slate-100 text-slate-700">
+                        <th className="text-left px-3 py-2 font-semibold">Metric</th>
+                        <th className="text-right px-3 py-2 font-semibold">Size</th>
+                        <th className="text-right px-3 py-2 font-semibold">Ratio&nbsp;<span className="font-normal text-xs opacity-60">(per text char)</span></th>
+                        <th className="text-left px-3 py-2 font-semibold">Notes</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr className="border-t border-slate-200 odd:bg-slate-50">
+                        <td className="px-3 py-2 text-slate-800">HTML markup</td>
+                        <td className="px-3 py-2 text-right font-mono text-slate-800">
+                          {((report.docSize.markupHtmlBytes ?? report.docSize.size) / 1000).toFixed(1)} KB
+                        </td>
+                        <td className={`px-3 py-2 text-right font-mono ${ratioColor(report.docSize.htmlToTextRatio)}`}>
+                          {report.docSize.htmlToTextRatio.toFixed(2)}
+                        </td>
+                        <td className="px-3 py-2 text-xs text-slate-500">tags kept; excl. scripts, CSS, JSON-like blocks</td>
+                      </tr>
+                      {report.docSize.jsToTextRatio != null && (
+                        <tr className="border-t border-slate-200 even:bg-slate-50">
+                          <td className="px-3 py-2 text-slate-800">JS (imimg.com, incl. packages)</td>
+                          <td className="px-3 py-2 text-right font-mono text-slate-800">
+                            {(report.docSize.jsChars ?? 0).toLocaleString()} chars
+                          </td>
+                          <td className={`px-3 py-2 text-right font-mono ${ratioColor(report.docSize.jsToTextRatio)}`}>
+                            {report.docSize.jsToTextRatio.toFixed(2)}
+                          </td>
+                          <td className="px-3 py-2 text-xs text-slate-500">
+                            {report.docSize.jsFilesTotal ?? 0} files ({report.docSize.jsFilesPackage ?? 0} pkg)
+                          </td>
+                        </tr>
+                      )}
+                      {report.docSize.jsToTextRatioApp != null && (
+                        <tr className="border-t border-slate-200 odd:bg-slate-50">
+                          <td className="px-3 py-2 text-slate-800">JS (imimg.com, app only)</td>
+                          <td className="px-3 py-2 text-right font-mono text-slate-800">
+                            {(report.docSize.jsCharsApp ?? 0).toLocaleString()} chars
+                          </td>
+                          <td className={`px-3 py-2 text-right font-mono ${ratioColor(report.docSize.jsToTextRatioApp)}`}>
+                            {report.docSize.jsToTextRatioApp.toFixed(2)}
+                          </td>
+                          <td className="px-3 py-2 text-xs text-slate-500">
+                            excl. {report.docSize.jsFilesPackage ?? 0} vendor/pkg bundle(s)
+                          </td>
+                        </tr>
+                      )}
+                      {report.docSize.cssToTextRatio != null && (
+                        <tr className="border-t border-slate-200 odd:bg-slate-50">
+                          <td className="px-3 py-2 text-slate-800">CSS (imimg.com + inline)</td>
+                          <td className="px-3 py-2 text-right font-mono text-slate-800">
+                            {(report.docSize.cssChars ?? 0).toLocaleString()} chars
+                          </td>
+                          <td className={`px-3 py-2 text-right font-mono ${ratioColor(report.docSize.cssToTextRatio)}`}>
+                            {report.docSize.cssToTextRatio.toFixed(2)}
+                          </td>
+                          <td className="px-3 py-2 text-xs text-slate-500">
+                            {report.docSize.cssExtCount ?? 0} ext + {report.docSize.cssInlineCount ?? 0} inline &lt;style&gt;
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
                 </div>
               </div>
             )}

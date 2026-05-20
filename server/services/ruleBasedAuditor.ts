@@ -7,9 +7,12 @@
 import type { AuditReport, AuditIssue, CriterionResult } from "./auditOrchestrator";
 import {
   computeHtmlTextMetrics,
+  computeJsCssMetrics,
   findTopBloatedSegments,
   type HtmlTextMetrics,
+  type JsCssMetrics,
 } from "./htmlTextMetrics";
+// JS metrics (jsChars, jsToTextRatio, etc.) are injected by the router via Playwright analysis
 import { countOpenTags } from "./htmlAuditFacts";
 import { runDeterministicSemanticChecks } from "./llmEvaluator";
 
@@ -744,10 +747,10 @@ function checkAccessibility(html: string): CriterionResult {
 
 // ── docSize recommendation ────────────────────────────────────────────────
 
-function buildDocSizeRec(m: HtmlTextMetrics): string {
-  const r = m.htmlToTextRatio;
+function buildDocSizeRec(m: HtmlTextMetrics, js: JsCssMetrics): string {
   const tactics: string[] = [];
 
+  const r = m.htmlToTextRatio;
   if (r > 30)
     tactics.push(`HTML-to-text ratio ${r.toFixed(1)} is very high (>30) — aggressively remove wrapper divs and inline styles`);
   else if (r > 15)
@@ -755,13 +758,18 @@ function buildDocSizeRec(m: HtmlTextMetrics): string {
   else
     tactics.push(`HTML-to-text ratio ${r.toFixed(1)} is acceptable`);
 
+  if (js.cssToTextRatio > 2)
+    tactics.push(`Inline CSS-to-text ratio ${js.cssToTextRatio.toFixed(2)} is high (${js.cssInlineCount} inline <style> block(s)) — consolidate into external stylesheets`);
+  else if (js.cssInlineCount > 2)
+    tactics.push(`${js.cssInlineCount} inline <style> blocks detected — consolidate into external stylesheet`);
+  if (js.cssExtCount > 5)
+    tactics.push(`${js.cssExtCount} external imimg.com stylesheets detected — consider bundling`);
+
   if (m.htmlBytes > 200_000)
     tactics.push("page exceeds 200 KB — minify HTML and defer non-critical resources");
   if (m.markupHtmlBytes > 80_000)
     tactics.push("move JSON-LD and inline config data to external files");
 
-  tactics.push("remove unused inline style= attributes");
-  tactics.push("defer third-party scripts and stylesheets");
   tactics.push("minify HTML whitespace in production");
 
   return tactics.slice(0, 6).join("; ");
@@ -769,8 +777,9 @@ function buildDocSizeRec(m: HtmlTextMetrics): string {
 
 // ── public entry ──────────────────────────────────────────────────────────
 
-export function performRuleBasedAudit(html: string): AuditReport {
+export async function performRuleBasedAudit(html: string): Promise<AuditReport> {
   const metrics = computeHtmlTextMetrics(html);
+  const jsCss = await computeJsCssMetrics(html, metrics.visibleTextChars);
   const topBloatedSegments = findTopBloatedSegments(html, 5);
 
   const llmFriendly  = checkLlmFriendly(html);
@@ -792,12 +801,13 @@ export function performRuleBasedAudit(html: string): AuditReport {
     accessibility,
     docSize: {
       size: metrics.htmlBytes,
-      recommendation: buildDocSizeRec(metrics),
+      recommendation: buildDocSizeRec(metrics, jsCss),
       htmlBytes: metrics.htmlBytes,
       markupHtmlBytes: metrics.markupHtmlBytes,
       visibleTextChars: metrics.visibleTextChars,
       htmlToTextRatio: metrics.htmlToTextRatio,
       topBloatedSegments,
+      ...jsCss,
     },
   };
 }

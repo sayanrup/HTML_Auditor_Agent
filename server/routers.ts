@@ -6,12 +6,49 @@ import {
   type AuditReport,
 } from "./services/auditOrchestrator";
 import { performRuleBasedAudit } from "./services/ruleBasedAuditor";
+import { analyzeJsFiles } from "./services/playwrightJsAnalyzer";
 import { addFeedback, listFeedback } from "./services/feedbackStore";
 import { applyAuditRecommendationsToDir } from "./services/dirRepoFixes";
 import { z } from "zod";
 
 /** Initial attempt plus this many retries (5 total attempts). */
 const HTML_AUDIT_RETRY_COUNT = 4;
+
+async function enrichWithJsAnalysis(
+  report: AuditReport,
+  url: string,
+  html: string
+): Promise<AuditReport> {
+  try {
+    const result = await analyzeJsFiles(url, html, report.docSize.visibleTextChars);
+    const vtc = Math.max(report.docSize.visibleTextChars, 1);
+    // cssChars in the report is inline-only at this point; combine with Playwright external
+    const inlineCssChars = report.docSize.cssChars;
+    const cssChars    = result.cssCharsExt    + inlineCssChars;
+    const cssCharsApp = result.cssCharsExtApp + inlineCssChars;
+    return {
+      ...report,
+      docSize: {
+        ...report.docSize,
+        jsChars:          result.jsChars,
+        jsCharsApp:       result.jsCharsApp,
+        jsFilesTotal:     result.jsFilesTotal,
+        jsFilesPackage:   result.jsFilesPackage,
+        jsToTextRatio:    result.jsToTextRatio,
+        jsToTextRatioApp: result.jsToTextRatioApp,
+        cssChars,
+        cssCharsApp,
+        cssExtCount:      result.cssExtCount,
+        cssExtPackage:    result.cssExtPackage,
+        cssToTextRatio:    Math.round((cssChars    / vtc) * 100) / 100,
+        cssToTextRatioApp: Math.round((cssCharsApp / vtc) * 100) / 100,
+      },
+    };
+  } catch (e) {
+    console.error("[resource-analysis]", e);
+    return report;
+  }
+}
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -87,7 +124,7 @@ export const appRouter = router({
           throw lastAuditError ?? new Error("Audit failed after retries");
         }
 
-        return report;
+        return await enrichWithJsAnalysis(report, url, fetchResult.html);
       }),
     performRuleBasedAudit: publicProcedure
       .input(z.object({ url: z.string().url() }))
@@ -104,7 +141,8 @@ export const appRouter = router({
           throw new Error(fetchResult.error || "Failed to fetch page");
         }
 
-        return performRuleBasedAudit(fetchResult.html);
+        const report = await performRuleBasedAudit(fetchResult.html);
+        return await enrichWithJsAnalysis(report, url, fetchResult.html);
       }),
     applyRecommendationsToDir: publicProcedure
       .input(

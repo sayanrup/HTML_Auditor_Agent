@@ -1,5 +1,5 @@
 import { analyzeAll } from "../auditors/auditors";
-import { computeHtmlTextMetrics, findTopBloatedSegments, type HtmlSegmentRatio } from "./htmlTextMetrics";
+import { computeHtmlTextMetrics, computeJsCssMetrics, findTopBloatedSegments, type HtmlSegmentRatio } from "./htmlTextMetrics";
 export type { HtmlSegmentRatio };
 
 export interface AuditIssue {
@@ -17,16 +17,26 @@ export interface CriterionResult {
 export interface docResult {
   size: number;
   recommendation: string;
-  /** UTF-8 bytes of the full raw HTML document. */
   htmlBytes: number;
-  /** UTF-8 bytes of HTML with tags kept, excluding JS/CSS/script/JSON payloads (ratio numerator). */
   markupHtmlBytes: number;
-  /** Visible text length after stripping tags and those payloads. */
   visibleTextChars: number;
-  /** `markupHtmlBytes / visibleTextChars` — markup per visible text character. */
   htmlToTextRatio: number;
-  /** Top 5 non-overlapping HTML segments ranked by HTML-to-text ratio (highest first). */
   topBloatedSegments: HtmlSegmentRatio[];
+  // CSS metrics — inline always present; external fields populated by Playwright after audit
+  cssChars: number;       // inline chars initially; combined (inline+ext) after Playwright
+  cssExtCount: number;
+  cssInlineCount: number;
+  cssToTextRatio: number;
+  cssCharsApp?: number;       // combined (inline + ext app) — after Playwright
+  cssExtPackage?: number;
+  cssToTextRatioApp?: number;
+  // JS metrics (populated by Playwright after audit returns)
+  jsChars?: number;
+  jsCharsApp?: number;
+  jsFilesTotal?: number;
+  jsFilesPackage?: number;
+  jsToTextRatio?: number;
+  jsToTextRatioApp?: number;
 }
 
 export interface AuditReport {
@@ -42,6 +52,7 @@ export interface AuditReport {
 export async function performAudit(html: string, llm_api_key: string, llm_model: string): Promise<AuditReport> {
   const { allAuditScore } = await analyzeAll(html, llm_api_key, llm_model);
   const textMetrics = computeHtmlTextMetrics(html);
+  const jsCssMetrics = await computeJsCssMetrics(html, textMetrics.visibleTextChars);
   const topBloatedSegments = findTopBloatedSegments(html, 5);
 
   const {
@@ -78,6 +89,7 @@ export async function performAudit(html: string, llm_api_key: string, llm_model:
       visibleTextChars: textMetrics.visibleTextChars,
       htmlToTextRatio: textMetrics.htmlToTextRatio,
       topBloatedSegments,
+      ...jsCssMetrics,
     },
   };
 }
