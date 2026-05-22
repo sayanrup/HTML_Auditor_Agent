@@ -37,6 +37,9 @@ export interface docResult {
   jsFilesPackage?: number;
   jsToTextRatio?: number;
   jsToTextRatioApp?: number;
+  // Unused resource coverage (from Playwright — both audits)
+  unusedJs?: Array<{ url: string; totalChars: number; unusedChars: number; unusedPct: number }>;
+  unusedCss?: Array<{ url: string; totalChars: number; unusedChars: number; unusedPct: number }>;
 }
 
 export interface AuditReport {

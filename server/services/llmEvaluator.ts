@@ -548,6 +548,14 @@ export async function evaluateAllWithLlm(
     const deterministicSemanticIssues =
   runDeterministicSemanticChecks(html);
 
+    // Extract imimg.com resource filenames from static HTML for LLM reasoning
+    const imimgJsNames: string[] = [];
+    const imimgCssNames: string[] = [];
+    for (const m of html.matchAll(/<script\b[^>]*\bsrc\s*=\s*["']([^"']*imimg\.com[^"']*)["'][^>]*>/gi))
+      imimgJsNames.push((m[1].split("/").pop() ?? "").split("?")[0]);
+    for (const m of html.matchAll(/<link\b[^>]*\bhref\s*=\s*["']([^"']*imimg\.com[^"']*)["'][^>]*\brel\s*=\s*["']stylesheet["'][^>]*>/gi))
+      imimgCssNames.push((m[1].split("/").pop() ?? "").split("?")[0]);
+
     const { chunks, originalBytes, preparedBytes, totalChunkBytes, chunked } =
       chunkHtmlForLlm(html, DEFAULT_MAX_PAYLOAD_BYTES);
     console.log(
@@ -578,6 +586,9 @@ export async function evaluateAllWithLlm(
         "",
         `- HTML-to-text ratio: ${htmlToTextRatio.toFixed(2)} (markup bytes incl. tags ÷ visible text chars; scripts/CSS/JSON excluded). ≤5 lean; 5–15 normal; 15–30 bloat; >30 heavy. Cite in docSize recommendation.`,
         `- CSS inline to visible text ratio: ${jsCss.cssToTextRatio.toFixed(2)} (${jsCss.cssInlineCount} inline <style> blocks, ${jsCss.cssChars.toLocaleString()} chars; ${jsCss.cssExtCount} external imimg.com sheets detected). Full CSS ratio incl. external is computed post-audit. Cite inline CSS bloat in docSize if ratio >2.`,
+        imimgJsNames.length > 0
+          ? `- imimg.com JS files loaded (${imimgJsNames.length} static): ${imimgJsNames.slice(0, 12).join(", ")}. If any filename suggests a library unlikely needed for this page (e.g. a chart lib on a text-only page, a video player with no video), flag it as an llmFriendly warning with recommendation to remove or lazy-load.`
+          : "",
         `- <h1> count: ${h1Count}. ${h1Count >= 1 ? "MUST NOT report missing h1 (hierarchy/wording critique OK)." : "May report missing h1."} ${h1Count <= 1 ? "MUST NOT report duplicate h1." : `Duplicate h1 flaggable (count=${h1Count}).`}`,
         `- <main> count: ${mainCount}. ${mainCount >= 1 ? "MUST NOT report missing main." : "May report missing main."} ${mainCount <= 1 ? "MUST NOT report multiple main." : `Multiple main flaggable (count=${mainCount}).`}`,
         "- OUT OF SCOPE: og:* / Open Graph tags — never report.",

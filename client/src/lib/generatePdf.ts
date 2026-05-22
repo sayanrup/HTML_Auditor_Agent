@@ -48,6 +48,8 @@ interface AuditReportData {
     cssInlineCount?: number;
     cssToTextRatio?: number;
     cssToTextRatioApp?: number;
+    unusedJs?: Array<{ url: string; totalChars: number; unusedChars: number; unusedPct: number }>;
+    unusedCss?: Array<{ url: string; totalChars: number; unusedChars: number; unusedPct: number }>;
   };
 }
 
@@ -309,6 +311,63 @@ function renderBloatedSegments(b: PdfBuilder, segments: HtmlSegmentRatio[]) {
   b.spacer(3);
 }
 
+function renderUnusedResources(b: PdfBuilder, docSize: AuditReportData["docSize"]) {
+  // Deduplicate by URL (same logic as the UI table)
+  const seen = new Set<string>();
+  const cssRows = (docSize.unusedCss ?? []).filter(e => {
+    if (seen.has(e.url)) return false;
+    seen.add(e.url);
+    return true;
+  });
+  if (cssRows.length === 0) return;
+
+  b.ensureSpace(14);
+  b.font(11, "bold");
+  b.color(15, 23, 42).writeLine("Unused CSS (imimg.com)", M, 6);
+  b.hrule();
+
+  b.font(8.5, "normal");
+  b.color(120, 53, 15);
+  b.writeWrapped(
+    "Playwright browser coverage — CSS bytes loaded but never applied during the page visit.",
+    M + 2, CW - 4, 4.2
+  );
+  b.spacer(3);
+
+  // Column positions: File | Total | Unused | %
+  const COL = [M, M + 95, M + 120, M + 148];
+
+  // Header row
+  b.ensureSpace(6);
+  b.fillRect(M, b.y - 0.5, CW, 5.5, 255, 237, 213);
+  b.font(8, "bold"); b.color(120, 53, 15);
+  b.pdf.text("File",   COL[0] + 2, b.y + 3.5);
+  b.pdf.text("Total",  COL[1],     b.y + 3.5, { align: "right" });
+  b.pdf.text("Unused", COL[2],     b.y + 3.5, { align: "right" });
+  b.pdf.text("%",      COL[3],     b.y + 3.5, { align: "right" });
+  b.y += 6;
+
+  for (const row of cssRows) {
+    b.ensureSpace(5);
+    const filename = (row.url.split("/").pop() ?? row.url).split("?")[0].slice(0, 48);
+    // Match UI colour thresholds: ≥90% red, ≥70% orange, else yellow
+    const [r, g, bl] =
+      row.unusedPct >= 90 ? [220, 38,  38] as const :
+      row.unusedPct >= 70 ? [234, 88,  12] as const :
+                            [202, 138,  4] as const;
+
+    b.font(7.5, "normal", "courier"); b.color(30, 41, 59);
+    b.pdf.text(filename, COL[0] + 2, b.y + 3);
+    b.pdf.text(`${(row.totalChars  / 1000).toFixed(1)} KB`, COL[1], b.y + 3, { align: "right" });
+    b.pdf.text(`${(row.unusedChars / 1000).toFixed(1)} KB`, COL[2], b.y + 3, { align: "right" });
+    b.pdf.setFont("helvetica", "bold"); b.pdf.setTextColor(r, g, bl);
+    b.pdf.text(`${row.unusedPct}%`, COL[3], b.y + 3, { align: "right" });
+    b.y += 4.5;
+  }
+
+  b.spacer(5);
+}
+
 function renderCriterion(
   b: PdfBuilder,
   title: string,
@@ -429,6 +488,7 @@ export function downloadAuditPdf(report: AuditReportData, url: string) {
   if (report.docSize.topBloatedSegments?.length) {
     renderBloatedSegments(b, report.docSize.topBloatedSegments);
   }
+  renderUnusedResources(b, report.docSize);
 
   const criteriaSections: [string, CriterionResult][] = [
     ["LLM-Friendly HTML",       report.llmFriendly],

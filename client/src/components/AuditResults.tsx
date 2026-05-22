@@ -47,6 +47,8 @@ interface docResult {
   cssInlineCount?: number;
   cssToTextRatio?: number;
   cssToTextRatioApp?: number;
+  unusedJs?: Array<{ url: string; totalChars: number; unusedChars: number; unusedPct: number }>;
+  unusedCss?: Array<{ url: string; totalChars: number; unusedChars: number; unusedPct: number }>;
 }
 
 interface AuditReportData {
@@ -448,6 +450,56 @@ export default function AuditResults({
           ))}
         </div>
       </div>
+
+      {/* Unused CSS */}
+      {(report.docSize.unusedCss?.length ?? 0) > 0 && (() => {
+        // Deduplicate by URL (keep first occurrence — already sorted by most unused)
+        const seen = new Set<string>();
+        const uniqueCss = report.docSize.unusedCss!.filter(e => {
+          if (seen.has(e.url)) return false;
+          seen.add(e.url);
+          return true;
+        });
+        return (
+          <Card className="border border-orange-200 bg-orange-50/40">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-lg text-orange-900">Unused CSS (imimg.com)</CardTitle>
+              <CardDescription className="text-orange-800/70">
+                Playwright browser coverage — CSS bytes loaded but never applied during the page visit.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="pt-0 pb-4">
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm border-collapse">
+                  <thead>
+                    <tr className="bg-orange-100 text-orange-900">
+                      <th className="text-left px-3 py-1.5 font-semibold">File</th>
+                      <th className="text-right px-3 py-1.5 font-semibold">Total</th>
+                      <th className="text-right px-3 py-1.5 font-semibold">Unused</th>
+                      <th className="text-right px-3 py-1.5 font-semibold">%</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {uniqueCss.map((e, i) => {
+                      const pct = e.unusedPct;
+                      const cls = pct >= 90 ? "text-red-700 font-bold" : pct >= 70 ? "text-orange-600 font-semibold" : "text-yellow-700";
+                      const filename = e.url.split("/").pop()?.split("?")[0] ?? e.url;
+                      return (
+                        <tr key={i} className="border-t border-orange-200/60 odd:bg-orange-50/40">
+                          <td className="px-3 py-1.5 font-mono text-xs text-slate-700 max-w-[320px] truncate" title={e.url}>{filename}</td>
+                          <td className="px-3 py-1.5 text-right font-mono text-xs text-slate-600">{(e.totalChars / 1000).toFixed(1)} KB</td>
+                          <td className="px-3 py-1.5 text-right font-mono text-xs text-slate-600">{(e.unusedChars / 1000).toFixed(1)} KB</td>
+                          <td className={`px-3 py-1.5 text-right font-mono text-xs ${cls}`}>{pct}%</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </CardContent>
+          </Card>
+        );
+      })()}
 
       {/* Summary Statistics */}
       <Card>

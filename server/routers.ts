@@ -42,6 +42,8 @@ async function enrichWithJsAnalysis(
         cssExtPackage:    result.cssExtPackage,
         cssToTextRatio:    Math.round((cssChars    / vtc) * 100) / 100,
         cssToTextRatioApp: Math.round((cssCharsApp / vtc) * 100) / 100,
+        unusedJs:  result.unusedJs,
+        unusedCss: result.unusedCss,
       },
     };
   } catch (e) {
