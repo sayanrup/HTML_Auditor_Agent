@@ -22,9 +22,10 @@ import {
 
 /** Default per-call payload budget. We size this for the WORST case: a chunk
  *  that needs to fit alongside ~6–8 KB of prompt overhead (schema, scoring,
- *  GT, rubric, caveats) inside the gateway's per-request budget. 60 KB gives
- *  ~70 KB total request, which is well under the upstream timeout window. */
-export const DEFAULT_MAX_PAYLOAD_BYTES = 60 * 1024;
+ *  GT, rubric, caveats) inside the gateway's per-request budget. 30 KB gives
+ *  ~38 KB total request, keeping concurrent uploads well under the intermesh
+ *  gateway's inbound-stream timeout. */
+export const DEFAULT_MAX_PAYLOAD_BYTES = 30 * 1024;
 
 const HTML_VOID_ELEMENTS = new Set([
   "area",

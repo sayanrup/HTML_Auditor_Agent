@@ -42,7 +42,7 @@ export class LlmConfigError extends Error {
 
 /** Hard per-call timeout. The gateway already has its own upstream timeout; this
  *  guards against requests that never come back at all. */
-const LLM_REQUEST_TIMEOUT_MS = 90_000;
+const LLM_REQUEST_TIMEOUT_MS = 120_000;
 
 /** HTTP statuses that justify a retry (model overloads, gateway timeouts, rate limits). */
 const RETRYABLE_STATUS = new Set([408, 425, 429, 500, 502, 503, 504]);

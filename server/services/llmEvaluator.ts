@@ -687,7 +687,7 @@ export async function evaluateAllWithLlm(
       return results;
     };
 
-    const CHUNK_CONCURRENCY = 3;
+    const CHUNK_CONCURRENCY = 2;
     const perChunkArrays = await runWithConcurrency(
       chunks,
       CHUNK_CONCURRENCY,

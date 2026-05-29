@@ -7,7 +7,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Loader2, Settings, Info, Bot, Code2 } from "lucide-react";
+import { Loader2, Settings, Info, Bot, Code2, AlertCircle, X } from "lucide-react";
 import { toast } from "sonner";
 import AuditResults from "@/components/AuditResults";
 import SettingsModal from "@/SettingModal";
@@ -35,6 +35,7 @@ export default function AuditPage() {
   const [infoOpen, setInfoOpen] = useState(false);
   const [feedbackOpen, setFeedbackOpen] = useState(false);
   const [auditMode, setAuditMode] = useState<AuditMode>("ai");
+  const [auditError, setAuditError] = useState<string | null>(null);
 
   const publicInfoQuery = trpc.system.publicInfo.useQuery(undefined, {
     staleTime: 5 * 60_000,
@@ -43,24 +44,30 @@ export default function AuditPage() {
   const performAuditMutation = trpc.audit.performAudit.useMutation({
     onSuccess: (data) => {
       setAuditReport(data);
+      setAuditError(null);
       setIsLoading(false);
       toast.success("Audit completed successfully!");
     },
     onError: (error) => {
       setIsLoading(false);
-      toast.error(error.message || "Failed to perform audit");
+      const msg = error.message || "Failed to perform audit";
+      setAuditError(msg);
+      toast.error(msg);
     },
   });
 
   const performRuleBasedAuditMutation = trpc.audit.performRuleBasedAudit.useMutation({
     onSuccess: (data) => {
       setAuditReport(data);
+      setAuditError(null);
       setIsLoading(false);
       toast.success("Rule-based audit completed!");
     },
     onError: (error) => {
       setIsLoading(false);
-      toast.error(error.message || "Failed to perform rule-based audit");
+      const msg = error.message || "Failed to perform rule-based audit";
+      setAuditError(msg);
+      toast.error(msg);
     },
   });
 
@@ -116,6 +123,7 @@ export default function AuditPage() {
     }
 
     setIsLoading(true);
+    setAuditError(null);
     if (auditMode === "ai") {
       performAuditMutation.mutate({ url, llm_api_key: config!.llm_api_key!, llm_model: config!.llm_model! });
     } else {
@@ -253,6 +261,29 @@ export default function AuditPage() {
             </form>
           </CardContent>
         </Card>
+
+        {/* Error */}
+        {auditError && (
+          <Card className="mb-6 border border-red-300 bg-red-50">
+            <CardContent className="pt-4 pb-4 flex gap-3 items-start">
+              <AlertCircle className="h-5 w-5 text-red-600 shrink-0 mt-0.5" />
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold text-red-800 mb-1">Audit failed</p>
+                <pre className="text-xs text-red-700 whitespace-pre-wrap break-all font-mono bg-red-100/60 rounded p-2 overflow-auto max-h-48">
+                  {auditError}
+                </pre>
+              </div>
+              <button
+                type="button"
+                onClick={() => setAuditError(null)}
+                className="shrink-0 text-red-400 hover:text-red-600 transition-colors"
+                aria-label="Dismiss error"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Results */}
         {auditReport && (
