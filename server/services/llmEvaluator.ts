@@ -37,15 +37,15 @@ const AllAuditScoreSchema = z.object({
 export type AllAuditScore = z.infer<typeof AllAuditScoreSchema>;
 
 const RUBRICS = {
-  llmFriendly: `HTML reviewer for machine+human readers; assume no-JS crawling. Flag: wrong/skipped/duplicate heading levels, weak landmark coverage (<main>, nav), layout tables, schema/microdata gaps, duplicate blocks, deep wrapper nesting, hidden text, JS-only content. Every avoidable wrapper is a finding. Prefer many specific issues over a high score.`,
+  llmFriendly: `HTML reviewer for machine+human readers; assume no-JS crawling. Flag: wrong/skipped heading levels (within this chunk only), weak landmark coverage (<main>, nav), layout tables, schema/microdata gaps, deep wrapper nesting, hidden text, JS-only content. Every avoidable wrapper is a finding. Prefer many specific issues over a high score. CHUNK SCOPE: only report issues fully visible in the current fragment — do not claim elements are missing if they may exist in another chunk.`,
 
-  w3cCompliance: `Parser-level HTML validator. Detect: invalid parent-child nesting, malformed table/list/form structure, nested interactives, bad label associations, heading order errors, duplicate IDs, deprecated tags/attrs, block elements in prohibited parents. Enforce direct-child rules for: dl, ul, ol, table, tr, thead, tbody, select, picture, ruby. VALID: <div><p>…</p></div>, block inside <div>, valid nested sectioning. Never invent invalid rules. Repeated violations must cut score.`,
+  w3cCompliance: `Parser-level HTML validator. Detect: invalid parent-child nesting, malformed table/list/form structure, nested interactives, bad label associations, deprecated tags/attrs, block elements in prohibited parents. Enforce direct-child rules for: dl, ul, ol, table, tr, thead, tbody, select, picture, ruby. VALID: <div><p>…</p></div>, block inside <div>, valid nested sectioning. Never invent invalid rules. Repeated violations must cut score. CHUNK SCOPE: do NOT report duplicate IDs or page-wide heading order — only flag violations clearly present within this fragment.`,
 
-  seo: `SEO pre-launch audit. Check: title/meta-description length, canonical, robots, hreflang, title/desc consistency, heading keyword fit (no stuffing), internal link anchor quality, JSON-LD presence+entity correctness, FAQ/HowTo/Product schema misuse, pagination, mobile meta. Flag every defensible gap. Out of scope: site authority, og:* tags (never report).`,
+  seo: `SEO pre-launch audit. Check: title/meta-description length, canonical, robots, hreflang, heading keyword fit (no stuffing), internal link anchor quality, JSON-LD presence+entity correctness, FAQ/HowTo/Product schema misuse, pagination, mobile meta. Flag every defensible gap. Out of scope: site authority, og:* tags (never report). CHUNK SCOPE: meta/canonical/lang findings live in chunk 1 (<head>) only — skip those checks in body-only chunks.`,
 
-  semanticHtml: `Parser-level semantic HTML validator. Enforce: landmarks, heading hierarchy, lists, tables, forms, button-vs-link, figure/figcaption, minimal div/span. Flag: div/span soup; missing/redundant landmarks; section/article without heading; wrong heading order; style-only headings; layout tables; misused article/section/nav/aside/main/header/footer; visual lists/nav without semantic markup; ARIA-vs-native conflicts; invalid parent-child. Enforce content-model: dl→dt/dd only; ul/ol→li only; valid select/table children; no block inside p; no nested interactives; valid label association; valid figure. Inspect each element individually — distinct DOM nodes = separate findings; group only when same structural pattern. VALID: <div><p>…</p></div>. Weakness→warning; content-model violation→error. Never invent invalid rules.`,
+  semanticHtml: `Parser-level semantic HTML validator. Enforce: landmarks, heading hierarchy (within chunk), lists, tables, forms, button-vs-link, figure/figcaption, minimal div/span. Flag: div/span soup; missing/redundant landmarks; section/article without heading; style-only headings; layout tables; misused article/section/nav/aside/main/header/footer; visual lists/nav without semantic markup; ARIA-vs-native conflicts; invalid parent-child. Enforce content-model: dl→dt/dd only; ul/ol→li only; valid select/table children; no block inside p; no nested interactives; valid label association; valid figure. Inspect each element individually — distinct DOM nodes = separate findings; group only when same structural pattern. VALID: <div><p>…</p></div>. Weakness→warning; content-model violation→error. Never invent invalid rules. CHUNK SCOPE: do NOT flag heading order that spans outside this fragment or globally-missing elements that may appear in another chunk.`,
 
-  accessibility: `WCAG 2.1 A/AA (HTML-inferable only). Flag: missing/wrong html[lang], heading hierarchy breaks, missing/empty image alt, unlabelled form controls, new-window links without text warning, skip link absent on complex layouts, keyboard-trap markup, tabindex misuse, wrong/redundant ARIA roles, aria-hidden on important content, missing radio fieldset, missing table headers, positive-tabindex focus risks. error=rule break; warning=likely issue; info=best practice. More findings over benefit of the doubt.`,
+  accessibility: `WCAG 2.1 A/AA (HTML-inferable only). Flag: missing/wrong html[lang], missing/empty image alt, unlabelled form controls, new-window links without text warning, keyboard-trap markup, tabindex misuse, wrong/redundant ARIA roles, aria-hidden on important content, missing radio fieldset, missing table headers, positive-tabindex focus risks. error=rule break; warning=likely issue; info=best practice. More findings over benefit of the doubt. CHUNK SCOPE: do not report skip-link absence (requires full-page view) or heading hierarchy that extends beyond this fragment.`,
 
   docSize: `Payload + markup bloat. HTML-to-text ratio is pre-computed and provided — cite it in recommendation. Flag: inline styles, inlined JSON-LD/data blobs, redundant script/link tags, duplicate CSS, deep wrapper nesting. Recommendation: 3–6 concrete tactics (semicolons or numbered steps).`,
 };
@@ -53,6 +53,8 @@ const RUBRICS = {
 type GroundTruth = { h1Count: number; mainCount: number; html: string };
 
 const OG_RE = /\bopen\s*graph\b|\bog:[a-z_-]+/i;
+const CASING_RE = /\b(?:upper[\s-]?case|lower[\s-]?case|capitaliz(?:e|ation)|all[\s-]caps|title[\s-]case|mixed[\s-]case|casing)\b/i;
+const CROSS_CHUNK_RE = /\b(?:duplicate\s+id(?:s|\b)|duplicate\s+attribute(?:s|\b)|skip[\s-]link|skipnav|skip[\s-]to[\s-](?:main|content))\b/i;
 const H1_PROXIMITY_RE = /(\bh1\b|<h1|h1\s+(?:tag|element|heading))/i;
 const MAIN_PROXIMITY_RE = /(<main\b|\bmain\s+(?:landmark|tag|element|content|region)\b)/i;
 const MISSING_RE = /\b(?:missing|absent|lack(?:ing|s)?|without|no|none)\b/i;
@@ -79,7 +81,6 @@ const HTML_VOID_ELEMENTS = new Set([
   "img",
   "input",
   "link",
-  "meta",
   "param",
   "source",
   "track",
@@ -268,7 +269,7 @@ export function filterIssuesAgainstGroundTruth(
   const kept: AuditScore["issues"] = [];
   for (const iss of issues) {
     const subject = `${iss.issue} ${iss.recommendation || ""}`;
-    if (OG_RE.test(subject)) {
+    if (OG_RE.test(subject) || CASING_RE.test(subject) || CROSS_CHUNK_RE.test(subject)) {
       dropped++;
       continue;
     }
@@ -567,6 +568,8 @@ export async function evaluateAllWithLlm(
       "Inspect each DOM element individually; validate parent-child relationships, content-model rules, landmark usage, and structural correctness. " +
       "Prefer false positives downgraded to warning/info over missed violations. Never invent invalid HTML rules. " +
       "Input is preprocessed: scripts, JSON-LD, styles, and inline style= removed; HTML may be chunked — do not flag absent scripts/styles/JSON. " +
+      "CHUNK SCOPE: flag only issues fully visible in the current fragment. Do NOT report: cross-chunk duplicate IDs, page-wide heading order, globally-absent elements that may appear in another chunk, skip-link absence. " +
+      "NEVER flag text casing (uppercase, lowercase, capitalization, all-caps, title-case) — this is content/design, not a structural issue. " +
       "Distinct structural violations on separate DOM nodes must be reported separately. " +
       "Return ONLY valid JSON (no markdown). Recommendations must name elements, attributes, or show example patterns.";
 
@@ -592,6 +595,8 @@ export async function evaluateAllWithLlm(
         `- <h1> count: ${h1Count}. ${h1Count >= 1 ? "MUST NOT report missing h1 (hierarchy/wording critique OK)." : "May report missing h1."} ${h1Count <= 1 ? "MUST NOT report duplicate h1." : `Duplicate h1 flaggable (count=${h1Count}).`}`,
         `- <main> count: ${mainCount}. ${mainCount >= 1 ? "MUST NOT report missing main." : "May report missing main."} ${mainCount <= 1 ? "MUST NOT report multiple main." : `Multiple main flaggable (count=${mainCount}).`}`,
         "- OUT OF SCOPE: og:* / Open Graph tags — never report.",
+        "- OUT OF SCOPE: text casing (uppercase, lowercase, capitalization, all-caps) — never report.",
+        "- CHUNK SCOPE: do not report cross-chunk issues (duplicate IDs across chunks, page-wide heading order, globally-absent elements that may be in another chunk, skip-link absence).",
         "",
         "Semantic-wrapper rule: before suggesting wrap/replace with article/section/main/header/footer/nav/aside/figure — verify element is not already that tag and has no ancestor of that tag in the HTML. Copy exact opening tag from source into htmlSnippet. Skip if already satisfied.",
         "",

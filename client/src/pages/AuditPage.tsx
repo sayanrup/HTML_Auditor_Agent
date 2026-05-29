@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { trpc } from "@/lib/trpc";
 import {
   loadAuditLlmSettings,
@@ -36,36 +36,79 @@ export default function AuditPage() {
   const [feedbackOpen, setFeedbackOpen] = useState(false);
   const [auditMode, setAuditMode] = useState<AuditMode>("ai");
   const [auditError, setAuditError] = useState<string | null>(null);
+  const [jobId, setJobId] = useState<string | null>(null);
+  const [progressMsg, setProgressMsg] = useState<string | null>(null);
 
   const publicInfoQuery = trpc.system.publicInfo.useQuery(undefined, {
     staleTime: 5 * 60_000,
   });
 
-  const performAuditMutation = trpc.audit.performAudit.useMutation({
-    onSuccess: (data) => {
-      setAuditReport(data);
+  // Poll the running job every 2 s until done or failed
+  const pollQuery = trpc.audit.pollJob.useQuery(
+    { jobId: jobId! },
+    {
+      enabled: !!jobId,
+      refetchInterval: (query) => {
+        const status = query.state.data?.status;
+        if (status === "done" || status === "failed") return false;
+        return 5000;
+      },
+    }
+  );
+
+  // React to poll results outside the query hook (tRPC v11 removed onSuccess/onError from useQuery)
+  useEffect(() => {
+    const data = pollQuery.data;
+    if (!data) return;
+    if (data.progress) setProgressMsg(data.progress);
+    if (data.status === "done") {
+      setAuditReport(data.result);
       setAuditError(null);
       setIsLoading(false);
+      setJobId(null);
+      setProgressMsg(null);
       toast.success("Audit completed successfully!");
+    } else if (data.status === "failed") {
+      const msg = data.error || "Audit failed";
+      setAuditError(msg);
+      setIsLoading(false);
+      setJobId(null);
+      setProgressMsg(null);
+      toast.error(msg);
+    }
+  }, [pollQuery.data]);
+
+  useEffect(() => {
+    if (!pollQuery.error) return;
+    const msg = pollQuery.error.message || "Failed to poll audit status";
+    setAuditError(msg);
+    setIsLoading(false);
+    setJobId(null);
+    setProgressMsg(null);
+    toast.error(msg);
+  }, [pollQuery.error]);
+
+  const startAuditMutation = trpc.audit.startAudit.useMutation({
+    onSuccess: ({ jobId: id }) => {
+      setJobId(id);
+      setProgressMsg("Starting audit…");
     },
     onError: (error) => {
       setIsLoading(false);
-      const msg = error.message || "Failed to perform audit";
+      const msg = error.message || "Failed to start audit";
       setAuditError(msg);
       toast.error(msg);
     },
   });
 
-  const performRuleBasedAuditMutation = trpc.audit.performRuleBasedAudit.useMutation({
-    onSuccess: (data) => {
-      setAuditReport(data);
-      setAuditError(null);
-      setIsLoading(false);
-      toast.success("Rule-based audit completed!");
+  const startRuleBasedAuditMutation = trpc.audit.startRuleBasedAudit.useMutation({
+    onSuccess: ({ jobId: id }) => {
+      setJobId(id);
+      setProgressMsg("Starting audit…");
     },
     onError: (error) => {
       setIsLoading(false);
-      const msg = error.message || "Failed to perform rule-based audit";
+      const msg = error.message || "Failed to start rule-based audit";
       setAuditError(msg);
       toast.error(msg);
     },
@@ -124,10 +167,11 @@ export default function AuditPage() {
 
     setIsLoading(true);
     setAuditError(null);
+    setAuditReport(null);
     if (auditMode === "ai") {
-      performAuditMutation.mutate({ url, llm_api_key: config!.llm_api_key!, llm_model: config!.llm_model! });
+      startAuditMutation.mutate({ url, llm_api_key: config!.llm_api_key!, llm_model: config!.llm_model! });
     } else {
-      performRuleBasedAuditMutation.mutate({ url });
+      startRuleBasedAuditMutation.mutate({ url });
     }
   };
 
@@ -252,7 +296,7 @@ export default function AuditPage() {
                 {isLoading ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Auditing...
+                    {progressMsg ?? "Auditing..."}
                   </>
                 ) : (
                   "Audit"
