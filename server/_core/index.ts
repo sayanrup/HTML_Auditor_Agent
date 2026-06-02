@@ -33,6 +33,17 @@ async function startServer() {
   // Configure body parser with larger size limit for file uploads
   app.use(express.json({ limit: "50mb" }));
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
+
+  app.use((req, res, next) => {
+    console.log("START", req.originalUrl);
+
+    res.on("finish", () => {
+      console.log("END", req.originalUrl, res.statusCode);
+    });
+
+    next();
+  });
+
   // tRPC API
   app.use(
     "/im-agents/api/trpc",
