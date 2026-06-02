@@ -32,16 +32,6 @@ async function startServer() {
   const server = createServer(app);
   // Configure body parser with larger size limit for file uploads
 
-  app.use((req, res, next) => {
-    console.log("START", req.url);
-
-    res.on("finish", () => {
-      console.log("END", req.url, res.statusCode);
-    });
-
-    next();
-  });
-
   app.use(
     "/im-agents/api",
     createProxyMiddleware({
