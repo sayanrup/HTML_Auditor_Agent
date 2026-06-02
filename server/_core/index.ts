@@ -31,27 +31,16 @@ async function startServer() {
   const app = express();
   const server = createServer(app);
   // Configure body parser with larger size limit for file uploads
-  app.use(express.json({ limit: "50mb" }));
-  app.use(express.urlencoded({ limit: "50mb", extended: true }));
 
   app.use((req, res, next) => {
-    console.log("START", req.originalUrl);
+    console.log("START", req.url);
 
     res.on("finish", () => {
-      console.log("END", req.originalUrl, res.statusCode);
+      console.log("END", req.url, res.statusCode);
     });
 
     next();
   });
-
-  // tRPC API
-  app.use(
-    "/im-agents/api/trpc",
-    createExpressMiddleware({
-      router: appRouter,
-      createContext,
-    })
-  );
 
   app.use(
     "/im-agents/api",
@@ -127,6 +116,16 @@ async function startServer() {
     })
   );
 
+  app.use(express.json({ limit: "50mb" }));
+  app.use(express.urlencoded({ limit: "50mb", extended: true }));
+
+  app.use(
+    "/im-agents/api/trpc",
+    createExpressMiddleware({
+      router: appRouter,
+      createContext,
+    })
+  );
 
   // development mode uses Vite, production mode uses static files
   if (process.env.NODE_ENV === "development") {
