@@ -11,7 +11,7 @@ const queryClient = new QueryClient();
 const trpcClient = trpc.createClient({
   links: [
     httpBatchLink({
-      url: "/im-agents/api/trpc",
+      url: "/im-agents/apiSelf/trpc",
       transformer: superjson,
       fetch(input, init) {
         return globalThis.fetch(input, {
