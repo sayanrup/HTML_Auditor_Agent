@@ -33,6 +33,14 @@ async function startServer() {
   // Configure body parser with larger size limit for file uploads
 
   app.use(
+    "/im-agents/api/trpc",
+    createExpressMiddleware({
+      router: appRouter,
+      createContext,
+    })
+  );
+
+  app.use(
     "/im-agents/api",
     createProxyMiddleware({
       target: "http://localhost:5173",
@@ -108,14 +116,6 @@ async function startServer() {
 
   app.use(express.json({ limit: "50mb" }));
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
-
-  app.use(
-    "/im-agents/api/trpc",
-    createExpressMiddleware({
-      router: appRouter,
-      createContext,
-    })
-  );
 
   // development mode uses Vite, production mode uses static files
   if (process.env.NODE_ENV === "development") {
