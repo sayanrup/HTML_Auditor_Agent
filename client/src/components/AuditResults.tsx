@@ -85,6 +85,35 @@ function getScoreBadgeColor(score: number): string {
   return "bg-red-500";
 }
 
+interface GroupedIssue {
+  severity: "error" | "warning" | "info";
+  issue: string;
+  recommendation: string;
+  snippets: string[];
+}
+
+function groupIssues(issues: Issue[]): GroupedIssue[] {
+  const map = new Map<string, GroupedIssue>();
+  for (const iss of issues) {
+    const key = `${iss.severity}|${iss.issue.trim()}|${iss.recommendation.trim()}`;
+    const existing = map.get(key);
+    const snippet = iss.htmlSnippet?.trim() ?? "";
+    if (existing) {
+      if (snippet && !existing.snippets.includes(snippet)) {
+        existing.snippets.push(snippet);
+      }
+    } else {
+      map.set(key, {
+        severity: iss.severity,
+        issue: iss.issue,
+        recommendation: iss.recommendation,
+        snippets: snippet ? [snippet] : [],
+      });
+    }
+  }
+  return Array.from(map.values());
+}
+
 function getSeverityIcon(severity: string) {
   switch (severity) {
     case "error":
@@ -146,25 +175,48 @@ function CriterionCard({
               </div>
             ) : (
               <div className="space-y-3">
-                {issues.map((issue, idx) => (
+                {groupIssues(issues).map((issue, idx) => (
                   <div key={idx} className="border-l-4 border-slate-200 pl-4 py-2">
                     <div className="flex items-start gap-2 mb-1">
                       {getSeverityIcon(issue.severity)}
                       <div>
                         <p className="font-medium text-sm text-slate-900">{issue.issue}</p>
-                        <Badge variant="outline" className="mt-1 text-xs">
-                          {issue.severity}
-                        </Badge>
+                        <div className="flex items-center gap-2 mt-1">
+                          <Badge variant="outline" className="text-xs">
+                            {issue.severity}
+                          </Badge>
+                          {issue.snippets.length > 1 && (
+                            <Badge variant="outline" className="text-xs text-slate-500">
+                              {issue.snippets.length} occurrences
+                            </Badge>
+                          )}
+                        </div>
                       </div>
                     </div>
-                    <p className="text-sm text-slate-600 mt-2">
+                    <p className="text-sm mt-2">
                       <span className="font-semibold" style={{ color: '#6666ff' }}>Recommendation:</span>
-<span style={{ color: '#6666ff' }}>{issue.recommendation}</span>
+                      <span style={{ color: '#6666ff' }}> {issue.recommendation}</span>
                     </p>
-                    <p className="text-sm text-slate-600 mt-2">
-                      <span className="font-semibold" style={{ color: '#ff6666' }}>htmlSnippet:</span>
-<span style={{ color: '#ff6666' }}>{issue.htmlSnippet}</span>
-                    </p>
+                    {issue.snippets.length === 1 && (
+                      <p className="text-sm mt-2">
+                        <span className="font-semibold" style={{ color: '#ff6666' }}>htmlSnippet:</span>
+                        <span style={{ color: '#ff6666' }}> {issue.snippets[0]}</span>
+                      </p>
+                    )}
+                    {issue.snippets.length > 1 && (
+                      <div className="mt-2">
+                        <span className="font-semibold text-sm" style={{ color: '#ff6666' }}>
+                          htmlSnippet:
+                        </span>
+                        <div className="space-y-1 mt-1">
+                          {issue.snippets.map((snippet, si) => (
+                            <p key={si} className="text-sm" style={{ color: '#ff6666' }}>
+                              <span className="font-semibold">{si + 1}.</span> {snippet}
+                            </p>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>

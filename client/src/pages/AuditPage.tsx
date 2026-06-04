@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { trpc } from "@/lib/trpc";
 import {
   loadAuditLlmSettings,
@@ -7,14 +7,32 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Loader2, Settings, Info, Bot, Code2, AlertCircle, X } from "lucide-react";
+import { Loader2, Settings, Info, Bot, Code2, AlertCircle, X, Upload } from "lucide-react";
 import { toast } from "sonner";
 import AuditResults from "@/components/AuditResults";
+import BulkAuditResults, { type BulkItem } from "@/components/BulkAuditResults";
 import SettingsModal from "@/SettingModal";
 import InfoModal from "@/InfoModal";
 import FeedbackModal from "@/FeedbackModal";
 
-type AuditMode = "ai" | "rules";
+type AuditMode = "ai" | "rules" | "bulk";
+
+/** Parse URLs out of a CSV string — scans every cell, keeps valid http(s) URLs, deduplicates. */
+function parseUrlsFromCsv(text: string): string[] {
+  const seen = new Set<string>();
+  const urls: string[] = [];
+  for (const line of text.split(/\r?\n/)) {
+    for (const rawCell of line.split(",")) {
+      const cell = rawCell.trim().replace(/^["']|["']$/g, "");
+      if (!cell.startsWith("http")) continue;
+      try {
+        new URL(cell);
+        if (!seen.has(cell)) { seen.add(cell); urls.push(cell); }
+      } catch { /* not a URL */ }
+    }
+  }
+  return urls;
+}
 
 type Config = {
   llm_api_key?: string;
@@ -38,6 +56,13 @@ export default function AuditPage() {
   const [auditError, setAuditError] = useState<string | null>(null);
   const [jobId, setJobId] = useState<string | null>(null);
   const [progressMsg, setProgressMsg] = useState<string | null>(null);
+
+  // Bulk audit state
+  const [bulkSubMode, setBulkSubMode] = useState<"ai" | "rules">("ai");
+  const [bulkUrls, setBulkUrls] = useState<string[]>([]);
+  const [bulkJobId, setBulkJobId] = useState<string | null>(null);
+  const [bulkData, setBulkData] = useState<{ items: BulkItem[]; totalUrls: number; completedUrls: number; jobDone: boolean } | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const publicInfoQuery = trpc.system.publicInfo.useQuery(undefined, {
     staleTime: 5 * 60_000,
@@ -87,6 +112,66 @@ export default function AuditPage() {
     setProgressMsg(null);
     toast.error(msg);
   }, [pollQuery.error]);
+
+  // ── Bulk polling ────────────────────────────────────────────────────
+  const bulkPollQuery = trpc.audit.pollJob.useQuery(
+    { jobId: bulkJobId! },
+    {
+      enabled: !!bulkJobId,
+      refetchInterval: (query) => {
+        const status = query.state.data?.status;
+        if (status === "done" || status === "failed") return false;
+        return 5000;
+      },
+    }
+  );
+
+  useEffect(() => {
+    const data = bulkPollQuery.data;
+    if (!data) return;
+    const raw = data.result as { items: BulkItem[]; totalUrls: number; completedUrls: number } | null;
+    if (raw?.items) {
+      setBulkData({ ...raw, jobDone: data.status === "done" || data.status === "failed" });
+    }
+    if (data.progress) setProgressMsg(data.progress);
+    if (data.status === "done") {
+      setIsLoading(false);
+      setBulkJobId(null);
+      setProgressMsg(null);
+      toast.success("Bulk audit completed!");
+    } else if (data.status === "failed") {
+      const msg = data.error || "Bulk audit failed";
+      setAuditError(msg);
+      setIsLoading(false);
+      setBulkJobId(null);
+      setProgressMsg(null);
+      toast.error(msg);
+    }
+  }, [bulkPollQuery.data]);
+
+  useEffect(() => {
+    if (!bulkPollQuery.error) return;
+    const msg = bulkPollQuery.error.message || "Failed to poll bulk audit status";
+    setAuditError(msg);
+    setIsLoading(false);
+    setBulkJobId(null);
+    setProgressMsg(null);
+    toast.error(msg);
+  }, [bulkPollQuery.error]);
+
+  const startBulkAuditMutation = trpc.audit.startBulkAudit.useMutation({
+    onSuccess: ({ jobId: id }) => {
+      setBulkJobId(id);
+      setProgressMsg("Starting bulk audit…");
+    },
+    onError: (error) => {
+      setIsLoading(false);
+      const msg = error.message || "Failed to start bulk audit";
+      setAuditError(msg);
+      toast.error(msg);
+    },
+  });
+  // ────────────────────────────────────────────────────────────────────
 
   const startAuditMutation = trpc.audit.startAudit.useMutation({
     onSuccess: ({ jobId: id }) => {
@@ -144,8 +229,49 @@ export default function AuditPage() {
     },
   });
 
+  const handleCsvFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const text = ev.target?.result as string;
+      const urls = parseUrlsFromCsv(text);
+      if (urls.length === 0) {
+        toast.error("No valid URLs found in the CSV. Each URL must start with http:// or https://");
+      } else {
+        setBulkUrls(urls);
+        setBulkData(null);
+        toast.success(`Found ${urls.length} URL${urls.length > 1 ? "s" : ""}`);
+      }
+    };
+    reader.readAsText(file);
+    // Reset input so re-uploading same file triggers onChange
+    e.target.value = "";
+  };
+
   const handleAudit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (auditMode === "bulk") {
+      if (bulkUrls.length === 0) {
+        toast.error("Please upload a CSV file with URLs first");
+        return;
+      }
+      if (bulkSubMode === "ai" && (!config?.llm_api_key || !config?.llm_model)) {
+        toast.error("Please enter your API key and Model in top right settings");
+        return;
+      }
+      setIsLoading(true);
+      setAuditError(null);
+      setBulkData(null);
+      startBulkAuditMutation.mutate({
+        urls: bulkUrls,
+        mode: bulkSubMode,
+        llm_api_key: config?.llm_api_key,
+        llm_model: config?.llm_model,
+      });
+      return;
+    }
 
     if (!url.trim()) {
       toast.error("Please enter a URL");
@@ -157,7 +283,6 @@ export default function AuditPage() {
       return;
     }
 
-    // Basic URL validation
     try {
       new URL(url);
     } catch {
@@ -275,6 +400,18 @@ export default function AuditPage() {
                 <Code2 className="w-4 h-4" />
                 Rule-based
               </button>
+              <button
+                type="button"
+                onClick={() => { setAuditMode("bulk"); setAuditReport(null); }}
+                className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-all ${
+                  auditMode === "bulk"
+                    ? "bg-white text-slate-900 shadow-sm"
+                    : "text-slate-500 hover:text-slate-700"
+                }`}
+              >
+                <Upload className="w-4 h-4" />
+                Bulk Audit
+              </button>
             </div>
 
             {auditMode === "rules" && (
@@ -283,26 +420,103 @@ export default function AuditPage() {
               </p>
             )}
 
-            <form onSubmit={handleAudit} className="flex gap-2">
-              <Input
-                type="url"
-                placeholder="https://example.com"
-                value={url}
-                onChange={(e) => setUrl(e.target.value)}
-                disabled={isLoading}
-                className="flex-1"
-              />
-              <Button type="submit" disabled={isLoading} className="px-6">
-                {isLoading ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    {progressMsg ?? "Auditing..."}
-                  </>
-                ) : (
-                  "Audit"
+            {/* Bulk CSV mode */}
+            {auditMode === "bulk" ? (
+              <div className="space-y-3">
+                {/* Sub-mode toggle */}
+                <div className="flex gap-2 p-1 bg-slate-100 rounded-md w-fit">
+                  <button
+                    type="button"
+                    onClick={() => setBulkSubMode("ai")}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium transition-all ${
+                      bulkSubMode === "ai" ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-700"
+                    }`}
+                  >
+                    <Bot className="w-3 h-3" /> AI
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setBulkSubMode("rules")}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium transition-all ${
+                      bulkSubMode === "rules" ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-700"
+                    }`}
+                  >
+                    <Code2 className="w-3 h-3" /> Rule-based
+                  </button>
+                </div>
+
+                <p className="text-xs text-slate-500">
+                  Upload a CSV with one URL per row. The first <code className="bg-slate-100 px-1 rounded">http(s)://</code> cell per row is used.
+                  URLs are audited sequentially — results appear as each URL completes.
+                </p>
+
+                {/* File input */}
+                <div className="flex items-center gap-3">
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept=".csv,text/csv,text/plain"
+                    className="hidden"
+                    onChange={handleCsvFile}
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={isLoading}
+                    className="gap-2"
+                  >
+                    <Upload className="w-4 h-4" />
+                    {bulkUrls.length > 0 ? `${bulkUrls.length} URLs loaded — change file` : "Upload CSV"}
+                  </Button>
+                </div>
+
+                {/* URL preview list */}
+                {bulkUrls.length > 0 && (
+                  <div className="border border-slate-200 rounded-md max-h-40 overflow-y-auto bg-slate-50 p-2 space-y-1">
+                    {bulkUrls.map((u, i) => (
+                      <p key={i} className="text-xs font-mono text-slate-600 truncate">
+                        <span className="text-slate-400 mr-2">{i + 1}.</span>{u}
+                      </p>
+                    ))}
+                  </div>
                 )}
-              </Button>
-            </form>
+
+                <form onSubmit={handleAudit}>
+                  <Button type="submit" disabled={isLoading || bulkUrls.length === 0} className="px-6">
+                    {isLoading ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        {progressMsg ?? "Auditing…"}
+                      </>
+                    ) : (
+                      `Start Bulk Audit (${bulkUrls.length} URL${bulkUrls.length !== 1 ? "s" : ""})`
+                    )}
+                  </Button>
+                </form>
+              </div>
+            ) : (
+              <form onSubmit={handleAudit} className="flex gap-2">
+                <Input
+                  type="url"
+                  placeholder="https://example.com"
+                  value={url}
+                  onChange={(e) => setUrl(e.target.value)}
+                  disabled={isLoading}
+                  className="flex-1"
+                />
+                <Button type="submit" disabled={isLoading} className="px-6">
+                  {isLoading ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      {progressMsg ?? "Auditing..."}
+                    </>
+                  ) : (
+                    "Audit"
+                  )}
+                </Button>
+              </form>
+            )}
           </CardContent>
         </Card>
 
@@ -329,6 +543,16 @@ export default function AuditPage() {
           </Card>
         )}
 
+        {/* Bulk Results */}
+        {bulkData && (
+          <BulkAuditResults
+            items={bulkData.items}
+            totalUrls={bulkData.totalUrls}
+            completedUrls={bulkData.completedUrls}
+            jobDone={bulkData.jobDone}
+          />
+        )}
+
         {/* Results */}
         {auditReport && (
           <AuditResults
@@ -353,7 +577,7 @@ export default function AuditPage() {
         )}
 
         {/* Empty State */}
-        {!auditReport && !isLoading && (
+        {!auditReport && !isLoading && !bulkData && (
           <Card className="border-dashed">
             <CardContent className="pt-12 pb-12 text-center">
               <div className="text-slate-400 mb-4">

@@ -243,7 +243,7 @@ export const appRouter = router({
         return { jobId: job.id };
       }),
 
-    /** Poll the status of a running audit job. */
+    /** Poll the status of a running audit job (single or bulk). */
     pollJob: publicProcedure
       .input(z.object({ jobId: z.string().uuid() }))
       .query(({ input }) => {
@@ -252,9 +252,110 @@ export const appRouter = router({
         return {
           status: job.status,
           progress: job.progress ?? null,
-          result: job.status === "done" ? job.result : null,
+          // Always return result so bulk jobs can stream partial data while running
+          result: job.result ?? null,
           error: job.status === "failed" ? job.error : null,
         };
+      }),
+
+    /** Fire-and-forget bulk audit — processes URLs sequentially, updates per-URL status as each completes. */
+    startBulkAudit: publicProcedure
+      .input(
+        z.object({
+          urls: z.array(z.string().url()).min(1).max(100),
+          mode: z.enum(["ai", "rules"]),
+          llm_api_key: z.string().optional(),
+          llm_model: z.string().optional(),
+        })
+      )
+      .mutation(async ({ input }) => {
+        const { urls, mode, llm_api_key, llm_model } = input;
+
+        if (mode === "ai") {
+          if (!llm_api_key?.trim()) throw new Error("LLM API key is required for AI mode");
+          if (!llm_model?.trim()) throw new Error("LLM model is required for AI mode");
+        }
+
+        type BulkItem = {
+          url: string;
+          status: "pending" | "running" | "done" | "failed";
+          result?: AuditReport;
+          error?: string;
+        };
+
+        const job = createJob();
+        const initialItems: BulkItem[] = urls.map((url) => ({ url, status: "pending" }));
+        updateJob(job.id, {
+          status: "running",
+          progress: `0 / ${urls.length} completed`,
+          result: { items: initialItems, totalUrls: urls.length, completedUrls: 0 },
+        });
+
+        (async () => {
+          let completedUrls = 0;
+
+          for (const url of urls) {
+            // Mark current URL as running
+            const snap = getJob(job.id)?.result as { items: BulkItem[]; totalUrls: number; completedUrls: number } | null;
+            if (!snap) break;
+            const runningItems = snap.items.map((it) =>
+              it.url === url ? { ...it, status: "running" as const } : it
+            );
+            updateJob(job.id, { result: { ...snap, items: runningItems } });
+
+            let itemResult: Omit<BulkItem, "url">;
+            try {
+              let fetchResult = await fetchPageHtml(url);
+              for (let i = 0; i < HTML_AUDIT_RETRY_COUNT; i++) {
+                if (fetchResult.success && fetchResult.html) break;
+                await delay(100 * (i + 1));
+                fetchResult = await fetchPageHtml(url);
+              }
+              if (!fetchResult.success || !fetchResult.html) {
+                throw new Error(fetchResult.error || "Failed to fetch page");
+              }
+
+              let report: AuditReport | undefined;
+              let lastErr: Error | undefined;
+
+              if (mode === "ai") {
+                for (let attempt = 0; attempt <= HTML_AUDIT_RETRY_COUNT; attempt++) {
+                  try {
+                    report = await performAudit(fetchResult.html, llm_api_key!, llm_model!);
+                    break;
+                  } catch (e) {
+                    lastErr = e instanceof Error ? e : new Error(String(e));
+                    if (attempt < HTML_AUDIT_RETRY_COUNT) await delay(400 * (attempt + 1));
+                  }
+                }
+                if (!report) throw lastErr ?? new Error("Audit failed after retries");
+              } else {
+                report = await performRuleBasedAudit(fetchResult.html);
+              }
+
+              const enriched = await enrichWithJsAnalysis(report, url, fetchResult.html);
+              itemResult = { status: "done", result: enriched };
+            } catch (e) {
+              const msg = e instanceof Error ? e.message : String(e);
+              itemResult = { status: "failed", error: msg };
+            }
+
+            completedUrls++;
+            const after = getJob(job.id)?.result as { items: BulkItem[]; totalUrls: number; completedUrls: number } | null;
+            if (!after) break;
+            const doneItems = after.items.map((it) =>
+              it.url === url ? { ...it, ...itemResult } : it
+            );
+            updateJob(job.id, {
+              result: { items: doneItems, totalUrls: urls.length, completedUrls },
+              progress: `${completedUrls} / ${urls.length} completed`,
+            });
+          }
+
+          updateJob(job.id, { status: "done", progress: undefined });
+        })();
+
+        return { jobId: job.id };
       }),
 
     applyRecommendationsToDir: publicProcedure
