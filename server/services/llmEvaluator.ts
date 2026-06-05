@@ -37,20 +37,20 @@ const AllAuditScoreSchema = z.object({
 export type AllAuditScore = z.infer<typeof AllAuditScoreSchema>;
 
 const RUBRICS = {
-  llmFriendly: `HTML reviewer for machine+human readers; assume no-JS crawling. Flag: wrong/skipped heading levels (within this chunk only), weak landmark coverage (<main>, nav), layout tables, deep wrapper nesting, hidden text, JS-only content. Every avoidable wrapper is a finding. DO NOT flag: missing schema/JSON-LD (stripped), generic "add structured data" suggestions, anything requiring full-page context. CHUNK SCOPE: only report issues fully visible in the current fragment.`,
+  llmFriendly: `HTML reviewer for machine+human readers; assume no-JS crawling. Flag: wrong/skipped heading levels (within this chunk only), weak landmark coverage (<main>, nav), layout tables, deep wrapper nesting, hidden text, JS-only content. Every avoidable wrapper is a finding. DO NOT flag: missing schema/JSON-LD (stripped), generic "add structured data" suggestions, anything requiring full-page context, nesting of <div id="root"> (framework mount point — intentional). CHUNK SCOPE: only report issues fully visible in the current fragment.`,
 
-  w3cCompliance: `Parser-level HTML validator. Flag ONLY violations you can directly observe: invalid parent-child nesting, malformed table/list/form structure, nested interactives, bad label associations, deprecated tags/attrs, block elements in prohibited parents. Enforce direct-child rules for: dl, ul, ol, table, tr, thead, tbody, select, picture, ruby. VALID: <div><p>…</p></div>, block inside <div>, valid nested sectioning. Never invent invalid rules — if a rule is not in the HTML spec, do not report it. Repeated violations must cut score. CHUNK SCOPE: do NOT report duplicate IDs or page-wide heading order.`,
+  w3cCompliance: `Parser-level HTML validator. Flag ONLY violations you can directly observe: invalid parent-child nesting, malformed table/list/form structure, nested interactives, bad label associations, deprecated tags/attrs, block elements in prohibited parents. Enforce direct-child rules for: dl, ul, ol, table, tr, thead, tbody, select, picture, ruby. VALID: <div><p>…</p></div>, block inside <div>, valid nested sectioning, <dt> before <dd> (always correct), multiple <dt> before one <dd>, new <dt> group after a <dd>. DO NOT flag any <dt>/<dd> ordering or pairing — the HTML5 spec has NO adjacency rule between <dt> and <dd>. Never invent invalid rules. Repeated violations must cut score. CHUNK SCOPE: do NOT report duplicate IDs or page-wide heading order.`,
 
-  seo: `SEO pre-launch audit. Check: title/meta-description length, canonical, robots, hreflang, heading keyword fit (no stuffing), internal link anchor quality, FAQ/HowTo/Product schema misuse (only if schema is visibly present), pagination, mobile meta. DO NOT flag missing JSON-LD / structured data (stripped during preprocessing — presence unknown). DO NOT flag og:* tags. CHUNK SCOPE: meta/canonical/lang findings live in chunk 1 (<head>) only.`,
+  seo: `SEO pre-launch audit. Check: hreflang, heading keyword fit (no stuffing), internal link anchor quality, FAQ/HowTo/Product schema misuse (only if schema is visibly present), pagination. DO NOT flag: <title> tag, meta description, canonical tag, robots meta/header, missing JSON-LD / structured data, og:* tags, mobile meta viewport. CHUNK SCOPE: hreflang findings live in chunk 1 (<head>) only — skip in body-only chunks.`,
 
   semanticHtml: `Parser-level semantic HTML validator.Enforce: heading hierarchy (within chunk), lists, tables, forms, button-vs-link, figure/figcaption, minimal div/span. Flag: div/span soup; missing/redundant landmarks; section/article without heading; style-only headings; layout tables; misused article/section/nav/aside/main/header/footer; visual lists/nav without semantic markup; ARIA-vs-native conflicts; invalid parent-child. Enforce content-model: dl→dt/dd only; ul/ol→li only; valid select/table children; no block inside p; no nested interactives; valid label association; valid figure. Each distinct DOM node = separate finding. VALID: <div><p>…</p></div>. Weakness→warning; content-model violation→error. Never invent invalid rules. CHUNK SCOPE: do NOT flag heading order spanning outside this fragment or globally-missing elements that may appear in another chunk.`,
 
-  accessibility: `WCAG 2.1 A/AA (HTML-inferable only). Flag: missing/wrong html[lang], missing/empty image alt, unlabelled form controls,keyboard-trap markup, tabindex misuse, wrong/redundant ARIA roles, aria-hidden on important content, missing radio fieldset, missing table headers. error=rule break; warning=likely issue. Only report issues you can confirm from the HTML. CHUNK SCOPE: do not report heading hierarchy that extends beyond this fragment.`,
+  accessibility: `WCAG 2.1 A/AA (HTML-inferable only). Flag: missing/empty image alt, unlabelled form controls, keyboard-trap markup, tabindex misuse, wrong/redundant ARIA roles, aria-hidden on important content, missing radio fieldset, missing table headers. DO NOT flag: html[lang] / lang attribute presence, value, or correctness. error=rule break; warning=likely issue. Only report issues you can confirm from the HTML. CHUNK SCOPE: do not report heading hierarchy that extends beyond this fragment.`,
 
-  docSize: `Payload + markup bloat. HTML-to-text ratio is pre-computed and provided — cite it in recommendation. Flag: inline styles, inlined data blobs, redundant script/link tags, duplicate CSS, deep wrapper nesting. Recommendation: 3–6 concrete tactics (semicolons or numbered steps).`,
+  docSize: `Payload + markup bloat. HTML-to-text ratio is pre-computed and provided — cite it in recommendation. Flag: inline styles, inlined data blobs, redundant script/link tags, duplicate CSS, deep wrapper nesting. DO NOT flag nesting of <div id="root"> (framework mount point). Recommendation: 3–6 concrete tactics (semicolons or numbered steps).`,
 };
 
-type GroundTruth = { h1Count: number; mainCount: number; html: string };
+type GroundTruth = { h1Count: number; mainCount: number; html: string; hasSpaRoot: boolean };
 
 const OG_RE = /\bopen\s*graph\b|\bog:[a-z_-]+/i;
 const CASING_RE = /\b(?:upper[\s-]?case|lower[\s-]?case|capitaliz(?:e|ation)|all[\s-]caps|title[\s-]case|mixed[\s-]case|casing)\b/i;
@@ -61,6 +61,20 @@ const MISSING_SCHEMA_RE = /\b(?:json[\s-]?ld|structured\s+data|schema(?:\.org)?(
 const OPENER_RE = /\b(?:noopener|noreferrer|rel\s*=\s*["']?(?:noopener|noreferrer)|opener)\b/i;
 /** Catches vague "consider adding X" info items with no named rule */
 const VAGUE_CONSIDER_RE = /^(?:consider\s+(?:add|using|implement)|you\s+(?:may|might|should)\s+consider|it\s+(?:may|might|would)\s+be\s+(?:helpful|beneficial|good|better)\s+to\s+(?:add|use|include))/i;
+/** Catches issues about meta title, description, canonical, robots — out of scope for SEO audit */
+const SEO_META_RE = /\b(?:meta\s+(?:title|description|desc)|<title\b|title\s+tag|title\s+(?:length|too\s+(?:long|short)|missing|absent)|meta\s+desc(?:ription)?|canonical\s+(?:tag|url|link)|<link[^>]*rel\s*=\s*["']?canonical|robots\s+(?:meta|tag|directive)|meta\s+robots|noindex|nofollow)\b/i;
+/** Catches lang attribute / html[lang] issues — out of scope */
+const LANG_ATTR_RE = /\b(?:html\s*\[\s*lang\s*\]|lang\s*=\s*["']|lang\s+attribute|language\s+attribute|missing\s+lang|incorrect\s+lang|wrong\s+lang|page\s+language|document\s+language)\b/i;
+/** Matches deep-nesting / excessive-div / wrapper-bloat issue text */
+const NESTING_ISSUE_RE = /\b(?:deep(?:ly)?\s+nest(?:ed|ing)?|wrapper\s+(?:nesting|bloat|div)|redundant\s+(?:div|wrapper)|unnecessary\s+(?:div|nesting|wrapper)|excessive\s+(?:nesting|use\s+of\s+<?\s*div|div)|div\s+soup|use\s+of\s+<?\s*div\b)\b/i;
+/** Matches a snippet that references the framework root mount div */
+const ROOT_DIV_SNIPPET_RE = /\bid\s*=\s*["']root["']/i;
+/**
+ * Catches all <dt>/<dd> ordering/pairing complaints — none are valid HTML5 rules.
+ * <dt> before <dd> is always correct; multiple <dt> before a <dd> is valid;
+ * a new <dt> group after <dd> is valid. The spec has no strict adjacency rule.
+ */
+const INVENTED_ORDER_RE = /\b(?:dt\b.*\b(?:must|should|needs?\s+to)\s+be\s+(?:directly\s+)?followed\s+by\b.*\bdd|\bdt\b.*\b(?:before|precede[sd]?)\b.*\bdd\b|\bdt\b.*(?:not\s+)?paired\s+with.*\bdd|\bdt\b.*(?:without|missing|no)\s+(?:a\s+|corresponding\s+)?dd|\bmissing\s+<dd\s+for|\bunpaired\s+<dt|\bdt\s+element[^.]*\bmust\s+be\s+followed)\b/i;
 const H1_PROXIMITY_RE = /(\bh1\b|<h1|h1\s+(?:tag|element|heading))/i;
 const MAIN_PROXIMITY_RE = /(<main\b|\bmain\s+(?:landmark|tag|element|content|region)\b)/i;
 const MISSING_RE = /\b(?:missing|absent|lack(?:ing|s)?|without|no|none)\b/i;
@@ -262,6 +276,88 @@ function isAlreadySatisfiedBySuggestion(
   });
 }
 
+/** Valid direct-child sets mirroring the deterministic checker rules. */
+const VALID_CHILDREN: Record<string, Set<string>> = {
+  dl:    new Set(["dt", "dd", "script", "template"]),
+  ul:    new Set(["li", "script", "template"]),
+  ol:    new Set(["li", "script", "template"]),
+  select:new Set(["option", "optgroup", "script", "template"]),
+  thead: new Set(["tr", "script", "template"]),
+  tbody: new Set(["tr", "script", "template"]),
+  tfoot: new Set(["tr", "script", "template"]),
+  tr:    new Set(["td", "th", "script", "template"]),
+};
+
+/**
+ * True when an issue mentions <dt> or <dd> AND the snippet shows <dt> appearing
+ * before <dd> — which is always valid HTML5 (dt before dd = correct structure).
+ * Covers all phrasing variants the LLM might use.
+ */
+function isDtBeforeDdFalsePositive(issueText: string, snippet: string): boolean {
+  if (!snippet) return false;
+  const lc = issueText.toLowerCase();
+  if (!lc.includes("dt") && !lc.includes("dd")) return false;
+
+  // Collect dt/dd open-tag positions in order
+  const tagRe = /<(dt|dd)\b/gi;
+  const tags: Array<"dt" | "dd"> = [];
+  let m: RegExpExecArray | null;
+  while ((m = tagRe.exec(snippet)) !== null) {
+    tags.push(m[1]!.toLowerCase() as "dt" | "dd");
+  }
+  if (tags.length === 0) return false;
+
+  // Valid pattern: every group starts with one-or-more dt, then one-or-more dd.
+  // Walk through and verify no dd appears before the first dt in its group.
+  let seenDt = false;
+  for (const tag of tags) {
+    if (tag === "dt") {
+      seenDt = true;
+    } else {
+      // dd: valid only if at least one dt has been seen before it
+      if (!seenDt) return false;
+    }
+  }
+  // All dd elements are preceded by at least one dt → structure is correct
+  return seenDt;
+}
+
+/**
+ * True when an issue claims invalid parent-child for a known container BUT the
+ * snippet's direct children are actually all valid — i.e. the LLM flagged
+ * correct HTML (false positive).
+ */
+function isParentChildFalsePositive(issueText: string, snippet: string): boolean {
+  if (!snippet) return false;
+  for (const [parent, allowed] of Object.entries(VALID_CHILDREN)) {
+    const parentRe = new RegExp(`<${parent}\\b[^>]*>([\\s\\S]*?)<\\/${parent}>`, "i");
+    const parentMatch = snippet.match(parentRe);
+    if (!parentMatch) continue;
+    // Issue must be claiming a problem with this parent element
+    const mentionsParent = new RegExp(`\\b${parent}\\b`, "i").test(issueText);
+    if (!mentionsParent) continue;
+    // Walk direct children of this parent in the snippet
+    const inner = parentMatch[1];
+    const tagRe = /<\/?([a-zA-Z][a-zA-Z0-9-]*)\b[^>]*>/g;
+    let m: RegExpExecArray | null;
+    let depth = 0;
+    let allValid = true;
+    while ((m = tagRe.exec(inner)) !== null) {
+      const tag = m[1]!.toLowerCase();
+      const isClose = m[0].startsWith("</");
+      const isSelf  = m[0].endsWith("/>");
+      if (!isClose) {
+        if (depth === 0 && !allowed.has(tag)) { allValid = false; break; }
+        if (!isSelf) depth++;
+      } else {
+        depth = Math.max(0, depth - 1);
+      }
+    }
+    if (allValid) return true;
+  }
+  return false;
+}
+
 /**
  * Drop issues that contradict our static ground-truth counts (so the LLM cannot
  * report "missing <h1>" when the page has one) or that touch out-of-scope
@@ -281,13 +377,21 @@ export function filterIssuesAgainstGroundTruth(
       CROSS_CHUNK_RE.test(subject) ||
       MISSING_SCHEMA_RE.test(subject) ||
       OPENER_RE.test(subject) ||
-      VAGUE_CONSIDER_RE.test(iss.issue)
+      SEO_META_RE.test(subject) ||
+      LANG_ATTR_RE.test(subject) ||
+      VAGUE_CONSIDER_RE.test(iss.issue) ||
+      isParentChildFalsePositive(subject, iss.htmlSnippet ?? "") ||
+      INVENTED_ORDER_RE.test(subject) ||
+      isDtBeforeDdFalsePositive(subject, iss.htmlSnippet ?? "") ||
+      (NESTING_ISSUE_RE.test(subject) && ROOT_DIV_SNIPPET_RE.test(iss.htmlSnippet ?? ""))
     ) {
       dropped++;
       continue;
     }
     if (H1_PROXIMITY_RE.test(iss.issue)) {
-      if (gt.h1Count >= 1 && MISSING_RE.test(iss.issue)) {
+      // Suppress "missing h1" when: static HTML has an h1, OR page is a SPA
+      // (div#root present → h1 is almost certainly JS-rendered at runtime)
+      if ((gt.h1Count >= 1 || gt.hasSpaRoot) && MISSING_RE.test(iss.issue)) {
         dropped++;
         continue;
       }
@@ -557,6 +661,7 @@ export async function evaluateAllWithLlm(
     const htmlSize = Buffer.byteLength(html, "utf8");
     const h1Count = countOpenTags(html, "h1");
     const mainCount = countOpenTags(html, "main");
+    const hasSpaRoot = /<div\b[^>]*\bid\s*=\s*["']root["']/i.test(html);
     const { htmlToTextRatio, visibleTextChars } = computeHtmlTextMetrics(html);
     const jsCss = await computeJsCssMetrics(html, visibleTextChars);
     const deterministicSemanticIssues =
@@ -606,7 +711,7 @@ export async function evaluateAllWithLlm(
         imimgJsNames.length > 0
           ? `- imimg.com JS files loaded (${imimgJsNames.length} static): ${imimgJsNames.slice(0, 12).join(", ")}. If any filename suggests a library unlikely needed for this page (e.g. a chart lib on a text-only page, a video player with no video), flag it as an llmFriendly warning with recommendation to remove or lazy-load.`
           : "",
-        `- <h1> count: ${h1Count}. ${h1Count >= 1 ? "MUST NOT report missing h1 (hierarchy/wording critique OK)." : "May report missing h1."} ${h1Count <= 1 ? "MUST NOT report duplicate h1." : `Duplicate h1 flaggable (count=${h1Count}).`}`,
+        `- <h1> count in static HTML: ${h1Count}.${hasSpaRoot ? " Page uses a JS framework (div#root detected) — h1 is client-side rendered and will not appear in static HTML. MUST NOT report missing h1 on this page." : (h1Count >= 1 ? " MUST NOT report missing h1 (hierarchy/wording critique OK)." : " May report missing h1.")} ${h1Count <= 1 ? "MUST NOT report duplicate h1." : `Duplicate h1 flaggable (count=${h1Count}).`}`,
         `- <main> count: ${mainCount}. ${mainCount >= 1 ? "MUST NOT report missing main." : "May report missing main."} ${mainCount <= 1 ? "MUST NOT report multiple main." : `Multiple main flaggable (count=${mainCount}).`}`,
         "- OUT OF SCOPE: og:* / Open Graph tags — never report.",
         "- OUT OF SCOPE: text casing (uppercase, lowercase, capitalization, all-caps) — never report.",
@@ -735,8 +840,8 @@ export async function evaluateAllWithLlm(
       h1Count,
       mainCount,
       html,
-    },deterministicSemanticIssues
-  );
+      hasSpaRoot,
+    }, deterministicSemanticIssues);
     return { allAuditScore: merged };
   } catch (e) {
     if (e instanceof LlmConfigError) {
