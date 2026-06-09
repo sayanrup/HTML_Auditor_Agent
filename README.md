@@ -6,6 +6,7 @@ Supports two modes:
 - **AI Audit** — uses an LLM (via [OpenRouter](https://openrouter.ai) or a compatible endpoint) to reason deeply about the HTML
 - **Rule-based Audit** — fully deterministic, no API key required
 
+To run, Download the project and run the HTML file.
 ---
 
 ## Features
