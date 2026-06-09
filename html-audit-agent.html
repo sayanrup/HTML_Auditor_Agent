@@ -355,42 +355,47 @@ function switchTab(tab) {
 }
 
 async function fetchHtmlFromUrl(url) {
-  // Ordered list of CORS proxies — tried in sequence until one works
+  // Each proxy has its own URL format and response shape
   const proxies = [
-    { name: 'corsproxy.io',  build: u => `https://corsproxy.io/?${encodeURIComponent(u)}` },
-    { name: 'allorigins',    build: u => `https://api.allorigins.win/raw?url=${encodeURIComponent(u)}` },
-    { name: 'htmldragon',    build: u => `https://htmldragon.com/proxy?url=${encodeURIComponent(u)}` },
+    {
+      name: 'corsproxy.io',
+      // corsproxy expects the raw URL after ?, NOT percent-encoded
+      proxyUrl: `https://corsproxy.io/?${url}`,
+      extract: async r => r.text(),
+    },
+    {
+      name: 'allorigins',
+      // /get returns JSON { contents, status }  — more stable than /raw
+      proxyUrl: `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`,
+      extract: async r => { const j = await r.json(); return j.contents || ''; },
+    },
+    {
+      name: 'codetabs',
+      proxyUrl: `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`,
+      extract: async r => r.text(),
+    },
   ];
 
-  function fetchWithTimeout(proxyUrl, ms) {
-    const ctrl = new AbortController();
-    const id = setTimeout(() => ctrl.abort(), ms);
-    return fetch(proxyUrl, { signal: ctrl.signal }).finally(() => clearTimeout(id));
-  }
-
   const errors = [];
-  for (const { name, build } of proxies) {
+  for (const p of proxies) {
+    const ctrl = new AbortController();
+    const tid = setTimeout(() => ctrl.abort(), 18000);
     try {
-      el('load-msg').textContent = `Fetching page via ${name}…`;
-      const res = await fetchWithTimeout(build(url), 18000);
-      if (!res.ok) { errors.push(`${name}: HTTP ${res.status}`); continue; }
-      const text = await res.text();
-      if (!text.trim()) { errors.push(`${name}: empty response`); continue; }
-      if (/<html|<!doctype/i.test(text.slice(0, 2000))) return text;
-      // allorigins sometimes wraps in JSON
-      try {
-        const j = JSON.parse(text);
-        if (j.contents && /<html|<!doctype/i.test(j.contents.slice(0, 2000))) return j.contents;
-      } catch {}
-      // Might still be valid HTML (SPAs, fragments)
-      if (text.length > 200) return text;
-      errors.push(`${name}: response doesn't look like HTML`);
-    } catch (e) {
-      errors.push(`${name}: ${e.name === 'AbortError' ? 'timed out' : e.message}`);
+      el('load-msg').textContent = `Fetching via ${p.name}…`;
+      const res = await fetch(p.proxyUrl, { signal: ctrl.signal });
+      clearTimeout(tid);
+      if (!res.ok) { errors.push(`${p.name}: HTTP ${res.status}`); continue; }
+      const text = await p.extract(res);
+      if (!text || !text.trim()) { errors.push(`${p.name}: empty body`); continue; }
+      if (text.trim().length < 50)  { errors.push(`${p.name}: body too short`); continue; }
+      return text;
+    } catch(e) {
+      clearTimeout(tid);
+      errors.push(`${p.name}: ${e.name === 'AbortError' ? 'timed out' : e.message}`);
     }
   }
   throw new Error(
-    `Could not fetch the page through any proxy.\n${errors.join('\n')}\n\nTry pasting the HTML directly instead.`
+    `All proxies failed:\n• ${errors.join('\n• ')}\n\nTip: Copy the page source (Ctrl+U) and paste into the "Paste HTML" tab instead.`
   );
 }
 
