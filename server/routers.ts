@@ -358,6 +358,49 @@ export const appRouter = router({
         return { jobId: job.id };
       }),
 
+    /** Fire-and-forget direct-HTML audit — no URL fetch needed; HTML is provided by the caller. */
+    startHtmlDirectAudit: publicProcedure
+      .input(
+        z.object({
+          html: z.string().min(1),
+          llm_api_key: z.string().optional(),
+          llm_model: z.string().optional(),
+        })
+      )
+      .mutation(async ({ input }) => {
+        const { html, llm_api_key, llm_model } = input;
+        const useAi = !!llm_api_key?.trim();
+
+        if (useAi && !llm_model?.trim()) {
+          throw new Error("LLM model is required when an API key is provided");
+        }
+
+        const job = createJob();
+
+        (async () => {
+          try {
+            updateJob(job.id, {
+              status: "running",
+              progress: useAi ? "Running AI audit…" : "Running rule-based audit…",
+            });
+
+            let report: AuditReport;
+            if (useAi) {
+              report = await performAudit(html, llm_api_key!, llm_model!);
+            } else {
+              report = await performRuleBasedAudit(html);
+            }
+
+            updateJob(job.id, { status: "done", result: report, progress: undefined });
+          } catch (e) {
+            const msg = e instanceof Error ? e.message : String(e);
+            updateJob(job.id, { status: "failed", error: msg, progress: undefined });
+          }
+        })();
+
+        return { jobId: job.id };
+      }),
+
     applyRecommendationsToDir: publicProcedure
       .input(
         z.object({

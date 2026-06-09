@@ -7,7 +7,8 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Loader2, Settings, Info, Bot, Code2, AlertCircle, X, Upload } from "lucide-react";
+import { Loader2, Settings, Info, Bot, Code2, AlertCircle, X, Upload, FileCode } from "lucide-react";
+import { Link } from "wouter";
 import { toast } from "sonner";
 import AuditResults from "@/components/AuditResults";
 import BulkAuditResults, { type BulkItem } from "@/components/BulkAuditResults";
@@ -330,6 +331,14 @@ export default function AuditPage() {
           </div>
 
           <div className="flex items-center gap-1 shrink-0">
+            <Link
+              href="/html-audit"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium text-indigo-600 hover:bg-indigo-50 transition mr-1"
+              title="Audit pasted HTML"
+            >
+              <FileCode className="w-4 h-4" />
+              HTML Audit
+            </Link>
             <button
               type="button"
               onClick={() => setFeedbackOpen(true)}

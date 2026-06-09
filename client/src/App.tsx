@@ -6,6 +6,7 @@ import ErrorBoundary from "./components/ErrorBoundary";
 import { ThemeProvider } from "./contexts/ThemeContext";
 import Home from "./pages/Home";
 import AuditPage from "./pages/AuditPage";
+import HtmlAuditPage from "./pages/HtmlAuditPage";
 
 function Router() {
   // make sure to consider if you need authentication for certain routes
@@ -13,9 +14,10 @@ function Router() {
     <Switch>
       <Route path="/" component={Home} />
       <Route path="/audit" component={AuditPage} />
+      <Route path="/html-audit" component={HtmlAuditPage} />
       <Route path="/404" component={NotFound} />
       {/* Final fallback route */}
-      <Route component={AuditPage} />
+      <Route component={HtmlAuditPage} />
     </Switch>
   );
 }

@@ -74,9 +74,12 @@ export async function llmCompleteJson(
     );
   }
 
+  const OPENROUTER_BASE = "https://openrouter.ai/api/v1/chat/completions";
   const url =
-    (cfg?.baseUrl || ENV.llm.baseUrl || "").trim() ||
-    "https://imllm.intermesh.net/v1/chat/completions";
+    key.startsWith("sk-or-")
+      ? OPENROUTER_BASE
+      : (cfg?.baseUrl || ENV.llm.baseUrl || "").trim() ||
+        "https://imllm.intermesh.net/v1/chat/completions";
   const model = llm_model.trim() || ENV.llm.model || "openai/gpt-4.1-mini";
   intermeshHitCount++;
   const hitId = intermeshHitCount;
