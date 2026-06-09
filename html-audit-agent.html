@@ -1,67 +1,296 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="light">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>HTML Audit Agent</title>
-<script src="https://cdn.tailwindcss.com"></script>
 <style>
-  body { font-family: system-ui, -apple-system, sans-serif; }
-  .spin { animation: spin 1s linear infinite; }
-  @keyframes spin { to { transform: rotate(360deg); } }
-  .fade-in { animation: fadeIn 0.35s ease; }
-  @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; } }
-  .snippet {
-    font-family: 'Courier New', monospace; font-size: 11px;
-    background: #f1f5f9; border-radius: 6px; padding: 5px 8px;
-    color: #374151; word-break: break-all; white-space: pre-wrap;
-    max-height: 72px; overflow-y: auto; border: 1px solid #e2e8f0; margin-top: 5px;
-  }
-  .crit-body { display: none; }
-  .crit-body.open { display: block; }
-  .chevron { transition: transform 0.2s; }
-  .chevron.open { transform: rotate(180deg); }
-  circle.progress { transition: stroke-dashoffset 0.9s cubic-bezier(.4,0,.2,1); }
+/* ── Theme variables ─────────────────────────────────────────────────── */
+:root {
+  --bg-page:    #f1f5f9;
+  --bg-surface: #ffffff;
+  --bg-2:       #f8fafc;
+  --bg-3:       #f1f5f9;
+  --border:     #e2e8f0;
+  --border2:    #cbd5e1;
+  --text:       #0f172a;
+  --text2:      #475569;
+  --text3:      #94a3b8;
+  --accent:     #4f46e5;
+  --accent-s:   #eef2ff;
+  --accent-t:   #4338ca;
+  --ring-track: #e2e8f0;
+  --snip-bg:    #f1f5f9;
+  --snip-text:  #1e293b;
+  --snip-bdr:   #e2e8f0;
+  --good-bg:#dcfce7;--good-t:#166534;--good-r:#22c55e;
+  --fair-bg:#fef9c3;--fair-t:#713f12;--fair-r:#eab308;
+  --need-bg:#ffedd5;--need-t:#7c2d12;--need-r:#f97316;
+  --poor-bg:#fee2e2;--poor-t:#7f1d1d;--poor-r:#ef4444;
+  --err-bg:#fef2f2;--err-t:#991b1b;--err-bdr:#fecaca;
+  --wrn-bg:#fffbeb;--wrn-t:#92400e;--wrn-bdr:#fde68a;
+  --inf-bg:#eff6ff;--inf-t:#1e40af;--inf-bdr:#bfdbfe;
+  --sha: 0 1px 3px rgb(0 0 0/.08),0 1px 2px -1px rgb(0 0 0/.06);
+  --sha-md: 0 4px 12px rgb(0 0 0/.08),0 2px 4px -2px rgb(0 0 0/.06);
+}
+[data-theme="dark"] {
+  --bg-page:    #080d18;
+  --bg-surface: #0f1829;
+  --bg-2:       #162032;
+  --bg-3:       #1e293b;
+  --border:     #1e293b;
+  --border2:    #334155;
+  --text:       #f1f5f9;
+  --text2:      #94a3b8;
+  --text3:      #475569;
+  --accent:     #818cf8;
+  --accent-s:   #1e1b4b;
+  --accent-t:   #a5b4fc;
+  --ring-track: #1e293b;
+  --snip-bg:    #0a0f1e;
+  --snip-text:  #e2e8f0;
+  --snip-bdr:   #1e293b;
+  --good-bg:#052e16;--good-t:#4ade80;--good-r:#22c55e;
+  --fair-bg:#1c1a00;--fair-t:#facc15;--fair-r:#ca8a04;
+  --need-bg:#1c0a00;--need-t:#fb923c;--need-r:#ea580c;
+  --poor-bg:#1c0505;--poor-t:#f87171;--poor-r:#dc2626;
+  --err-bg:#1c0505;--err-t:#fca5a5;--err-bdr:#7f1d1d;
+  --wrn-bg:#1c1200;--wrn-t:#fcd34d;--wrn-bdr:#78350f;
+  --inf-bg:#030c1f;--inf-t:#93c5fd;--inf-bdr:#1e3a5f;
+  --sha: 0 1px 3px rgb(0 0 0/.4),0 1px 2px -1px rgb(0 0 0/.3);
+  --sha-md: 0 4px 12px rgb(0 0 0/.4),0 2px 4px -2px rgb(0 0 0/.3);
+}
+
+/* ── Reset & base ───────────────────────────────────────────────────── */
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{
+  font-family:-apple-system,BlinkMacSystemFont,'Inter','Segoe UI',sans-serif;
+  background:var(--bg-page);color:var(--text);
+  min-height:100vh;line-height:1.5;
+  transition:background .25s,color .25s;
+}
+
+/* ── Layout ─────────────────────────────────────────────────────────── */
+.wrap{max-width:920px;margin:0 auto;padding:32px 16px 72px}
+
+/* ── Card ───────────────────────────────────────────────────────────── */
+.card{
+  background:var(--bg-surface);border:1px solid var(--border);
+  border-radius:18px;box-shadow:var(--sha);overflow:hidden;
+  transition:background .25s,border-color .25s;
+}
+.card+.card,.card+div{margin-top:12px}
+.ch{
+  padding:14px 20px;border-bottom:1px solid var(--border);
+  display:flex;align-items:center;justify-content:space-between;gap:12px;
+  transition:border-color .25s;
+}
+.cb{padding:20px}
+
+/* ── Typography helpers ─────────────────────────────────────────────── */
+.label-sm{font-size:13px;font-weight:600;color:var(--text)}
+.caption{font-size:11.5px;color:var(--text3)}
+
+/* ── Badge ──────────────────────────────────────────────────────────── */
+.badge{
+  display:inline-flex;align-items:center;gap:5px;
+  font-size:11px;font-weight:600;padding:3px 9px;border-radius:999px;
+}
+.badge-ai{background:var(--accent-s);color:var(--accent-t)}
+.badge-rule{background:var(--bg-3);color:var(--text2);border:1px solid var(--border)}
+.badge-good{background:var(--good-bg);color:var(--good-t)}
+.badge-fair{background:var(--fair-bg);color:var(--fair-t)}
+.badge-need{background:var(--need-bg);color:var(--need-t)}
+.badge-poor{background:var(--poor-bg);color:var(--poor-t)}
+
+/* ── Inputs ─────────────────────────────────────────────────────────── */
+input,select,textarea{
+  background:var(--bg-2);border:1px solid var(--border);
+  color:var(--text);border-radius:10px;
+  transition:border-color .15s,box-shadow .15s,background .25s;
+  font-family:inherit;
+}
+input:focus,select:focus,textarea:focus{
+  outline:none;border-color:var(--accent);
+  box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 14%,transparent);
+}
+input::placeholder,textarea::placeholder{color:var(--text3)}
+select option{background:var(--bg-surface);color:var(--text)}
+
+/* ── Buttons ────────────────────────────────────────────────────────── */
+.btn{
+  display:inline-flex;align-items:center;gap:7px;
+  border:none;border-radius:10px;cursor:pointer;
+  font-family:inherit;font-weight:600;
+  transition:opacity .15s,transform .1s;
+}
+.btn:active{transform:scale(.98)}
+.btn-primary{
+  background:var(--accent);color:#fff;
+  padding:9px 22px;font-size:14px;
+  box-shadow:0 2px 8px color-mix(in srgb,var(--accent) 40%,transparent);
+}
+.btn-primary:hover{opacity:.9}
+.btn-primary:disabled{opacity:.4;cursor:not-allowed;transform:none}
+.btn-icon{
+  width:36px;height:36px;padding:0;justify-content:center;
+  background:var(--bg-surface);border:1px solid var(--border);
+  color:var(--text2);border-radius:10px;box-shadow:var(--sha);
+}
+.btn-icon:hover{color:var(--text);border-color:var(--border2)}
+
+/* ── Tab pill ───────────────────────────────────────────────────────── */
+.tab-pill{background:var(--bg-3);border-radius:10px;padding:4px;display:flex;gap:2px}
+.tab-btn{
+  display:flex;align-items:center;gap:6px;
+  padding:6px 14px;border-radius:7px;
+  font-size:12px;font-weight:600;cursor:pointer;
+  border:none;transition:all .15s;
+  color:var(--text2);background:transparent;font-family:inherit;
+}
+.tab-btn.active{
+  background:var(--bg-surface);color:var(--text);
+  box-shadow:0 1px 4px rgb(0 0 0/.12);
+}
+
+/* ── Code snippets ──────────────────────────────────────────────────── */
+.snippet{
+  font-family:'Fira Mono','Courier New',monospace;font-size:11px;
+  background:var(--snip-bg);color:var(--snip-text);
+  border:1px solid var(--snip-bdr);border-radius:8px;
+  padding:8px 12px;margin-top:8px;
+  white-space:pre-wrap;word-break:break-all;
+  max-height:80px;overflow-y:auto;line-height:1.55;
+  transition:background .25s,border-color .25s;
+}
+.fix-code{
+  font-family:'Fira Mono','Courier New',monospace;font-size:11.5px;
+  background:var(--snip-bg);color:var(--snip-text);
+  border:1px solid var(--snip-bdr);border-left:3px solid var(--accent);
+  border-radius:8px;padding:10px 14px;margin-top:6px;
+  white-space:pre;overflow-x:auto;line-height:1.65;
+  transition:background .25s,border-color .25s;
+}
+
+/* ── Score ring ─────────────────────────────────────────────────────── */
+.ring-track{stroke:var(--ring-track)}
+circle.progress{transition:stroke-dashoffset .9s cubic-bezier(.4,0,.2,1)}
+
+/* ── Score grid ─────────────────────────────────────────────────────── */
+.score-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:10px}
+@media(max-width:680px){.score-grid{grid-template-columns:repeat(3,1fr)}}
+.score-cell{
+  text-align:center;background:var(--bg-2);
+  border:1px solid var(--border);border-radius:14px;
+  padding:14px 8px 10px;transition:background .25s,border-color .25s;
+}
+
+/* ── Criterion card ─────────────────────────────────────────────────── */
+.crit-body{display:none}
+.crit-body.open{display:block}
+.chevron{transition:transform .2s}
+.chevron.open{transform:rotate(180deg)}
+
+/* ── Issue row ──────────────────────────────────────────────────────── */
+.issue-row{
+  display:flex;gap:10px;
+  padding:12px 0;border-bottom:1px solid var(--border);
+}
+.issue-row:last-child{border-bottom:none}
+
+/* ── Insight item ───────────────────────────────────────────────────── */
+.insight-item{
+  padding:16px 0;border-bottom:1px solid var(--border);
+}
+.insight-item:last-child{border-bottom:none}
+
+/* ── Severity pills ─────────────────────────────────────────────────── */
+.sev-error{background:var(--err-bg);color:var(--err-t);border:1px solid var(--err-bdr)}
+.sev-warning{background:var(--wrn-bg);color:var(--wrn-t);border:1px solid var(--wrn-bdr)}
+.sev-info{background:var(--inf-bg);color:var(--inf-t);border:1px solid var(--inf-bdr)}
+
+/* ── Loading bar ────────────────────────────────────────────────────── */
+.load-track{
+  width:140px;height:3px;background:var(--border);
+  border-radius:999px;overflow:hidden;margin:14px auto 0;
+}
+.load-bar{
+  height:100%;background:linear-gradient(90deg,var(--accent),color-mix(in srgb,var(--accent) 60%,#7c3aed));
+  border-radius:999px;
+  animation:loadSlide 1.5s ease-in-out infinite;
+}
+@keyframes loadSlide{
+  0%{transform:translateX(-120%) scaleX(.5)}
+  50%{transform:translateX(20%) scaleX(.8)}
+  100%{transform:translateX(120%) scaleX(.5)}
+}
+
+/* ── Animations ─────────────────────────────────────────────────────── */
+.fade-in{animation:fadeIn .35s ease}
+@keyframes fadeIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+.spin{animation:spin 1s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* ── Separator ──────────────────────────────────────────────────────── */
+.sep{border:none;border-top:1px solid var(--border);margin:0}
+
+/* ── Tooltip-style header accent ────────────────────────────────────── */
+.crit-accent{
+  width:4px;height:28px;border-radius:2px;flex-shrink:0;
+}
 </style>
 </head>
-<body class="bg-gradient-to-br from-slate-50 to-slate-100 min-h-screen py-8 px-4">
-<div class="max-w-4xl mx-auto space-y-4">
+<body>
+<div class="wrap">
 
-  <!-- Header -->
-  <div class="flex items-start gap-4 mb-2">
-    <div class="w-12 h-12 rounded-2xl bg-indigo-600 flex items-center justify-center shrink-0 shadow-lg shadow-indigo-200">
-      <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8V4H8"/><rect width="16" height="12" x="4" y="8" rx="2"/><path d="M2 14h2"/><path d="M20 14h2"/><path d="M15 13v2"/><path d="M9 13v2"/></svg>
+  <!-- ── Topbar ──────────────────────────────────────────────────────── -->
+  <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:28px">
+    <div style="display:flex;align-items:center;gap:16px">
+      <div style="width:50px;height:50px;flex-shrink:0;border-radius:16px;
+        background:linear-gradient(135deg,#4f46e5 0%,#7c3aed 100%);
+        display:flex;align-items:center;justify-content:center;
+        box-shadow:0 6px 20px rgba(79,70,229,.35)">
+        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8V4H8"/><rect width="16" height="12" x="4" y="8" rx="2"/><path d="M2 14h2"/><path d="M20 14h2"/><path d="M15 13v2"/><path d="M9 13v2"/></svg>
+      </div>
+      <div>
+        <h1 style="font-size:26px;font-weight:800;color:var(--text);letter-spacing:-.5px;line-height:1.2">HTML Audit Agent</h1>
+        <p style="font-size:13px;color:var(--text2);margin-top:3px">LLM-Friendliness · W3C · SEO · Semantic HTML · Accessibility (WCAG 2.1)</p>
+      </div>
     </div>
-    <div>
-      <h1 class="text-3xl font-bold text-slate-900">HTML Audit Agent</h1>
-      <p class="text-slate-500 mt-0.5 text-sm">Audit any HTML against LLM-friendliness, W3C, SEO, Semantic HTML &amp; Accessibility rules</p>
-    </div>
+    <button class="btn btn-icon" onclick="toggleTheme()" title="Toggle dark / light mode">
+      <svg id="icon-sun" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
+      <svg id="icon-moon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>
+    </button>
   </div>
 
-  <!-- Config card -->
-  <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-    <div class="px-5 py-3.5 border-b border-slate-100 flex items-center justify-between">
-      <div class="flex items-center gap-2 flex-wrap">
-        <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8V4H8"/><rect width="16" height="12" x="4" y="8" rx="2"/><path d="M2 14h2"/><path d="M20 14h2"/><path d="M15 13v2"/><path d="M9 13v2"/></svg>
-        <span class="font-semibold text-sm text-slate-800">OpenRouter Configuration</span>
-        <span id="mode-badge" class="text-xs px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 font-medium">No key — rule-based audit</span>
+  <!-- ── OpenRouter config ────────────────────────────────────────────── -->
+  <div class="card">
+    <div class="ch">
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+        <span class="label-sm">OpenRouter API Key</span>
+        <span id="mode-badge" class="badge badge-rule">No key — rule-based</span>
       </div>
-      <a href="https://openrouter.ai/keys" target="_blank" rel="noopener noreferrer" class="text-xs text-indigo-500 hover:text-indigo-700 flex items-center gap-1">
-        Get a key
-        <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg>
+      <a href="https://openrouter.ai/keys" target="_blank" rel="noopener noreferrer"
+        style="font-size:11.5px;color:var(--accent);text-decoration:none;display:flex;align-items:center;gap:4px;white-space:nowrap">
+        Get a free key
+        <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg>
       </a>
     </div>
-    <div class="px-5 py-4 space-y-3">
-      <div class="flex gap-3">
-        <div class="relative flex-1">
-          <input id="api-key" type="password" placeholder="sk-or-v1-… (optional — leave blank for rule-based audit)"
-            class="w-full h-9 rounded-lg border border-slate-200 bg-slate-50 px-3 pr-9 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-indigo-300"
+    <div class="cb">
+      <div style="display:flex;gap:10px;align-items:stretch">
+        <div style="position:relative;flex:1">
+          <input id="api-key" type="password" autocomplete="off"
+            placeholder="sk-or-v1-… (leave blank for rule-based audit)"
+            style="width:100%;height:40px;padding:0 40px 0 13px;font-size:13px;font-family:monospace"
             oninput="onKeyChange()">
-          <button onclick="toggleKey()" class="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600" aria-label="Toggle visibility">
+          <button onclick="toggleKey()" aria-label="Toggle key visibility"
+            style="position:absolute;right:10px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:var(--text3);padding:2px;display:flex">
             <svg id="eye-svg" xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
           </button>
         </div>
-        <select id="model-sel" disabled class="h-9 rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-300 disabled:opacity-40 disabled:cursor-not-allowed w-60">
+        <select id="model-sel" disabled
+          style="height:40px;padding:0 12px;font-size:12px;font-family:monospace;min-width:200px;opacity:.45;cursor:not-allowed">
           <option>openai/gpt-4.1-mini</option>
           <option>openai/gpt-4.1</option>
           <option>anthropic/claude-3.5-haiku</option>
@@ -69,220 +298,245 @@
           <option>google/gemini-2.0-flash-001</option>
         </select>
       </div>
-      <p class="text-xs text-slate-400">Leave blank to run a deterministic rule-based audit with no API key or internet required.</p>
+      <p class="caption" style="margin-top:8px">Leave blank for deterministic rule-based audit — no API key or internet required.</p>
     </div>
   </div>
 
-  <!-- Input card -->
-  <div class="bg-white rounded-2xl border border-slate-200 shadow-sm">
-    <!-- Tab toggle -->
-    <div class="px-5 py-3.5 border-b border-slate-100 flex items-center justify-between">
-      <div class="flex gap-1 p-1 bg-slate-100 rounded-lg">
-        <button id="tab-html" onclick="switchTab('html')"
-          class="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-all bg-white text-slate-900 shadow-sm">
-          <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+  <!-- ── Input card ───────────────────────────────────────────────────── -->
+  <div class="card">
+    <div class="ch">
+      <div class="tab-pill">
+        <button id="tab-html" class="tab-btn active" onclick="switchTab('html')">
+          <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
           Paste HTML
         </button>
-        <button id="tab-url" onclick="switchTab('url')"
-          class="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-all text-slate-500 hover:text-slate-700">
-          <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+        <button id="tab-url" class="tab-btn" onclick="switchTab('url')">
+          <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
           Audit URL
         </button>
       </div>
-      <div id="mode-ind" class="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-full bg-slate-100 text-slate-600 border border-slate-200 font-medium select-none">
-        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
-        Rule-based audit (no AI)
-      </div>
+      <span id="mode-ind" class="badge badge-rule">
+        <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+        Rule-based
+      </span>
     </div>
-
-    <div class="p-5">
+    <div class="cb">
       <!-- HTML paste panel -->
       <div id="panel-html">
-        <textarea id="html-in" rows="13" spellcheck="false"
-          placeholder="&lt;!DOCTYPE html&gt;&#10;&lt;html lang=&quot;en&quot;&gt;&#10;  &lt;head&gt;…&lt;/head&gt;&#10;  &lt;body&gt;…&lt;/body&gt;&#10;&lt;/html&gt;"
-          class="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs font-mono text-slate-800 placeholder-slate-300 resize-y focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-indigo-300"
+        <textarea id="html-in" rows="12" spellcheck="false"
+          placeholder="<!DOCTYPE html>&#10;<html lang=&quot;en&quot;>&#10;  <head>…</head>&#10;  <body>…</body>&#10;</html>"
+          style="width:100%;border-radius:10px;padding:12px 14px;font-size:12px;font-family:'Fira Mono','Courier New',monospace;resize:vertical;line-height:1.65"
           oninput="onHtmlChange()"></textarea>
-        <div class="flex items-center justify-end mt-3 gap-3">
-          <span id="char-cnt" class="text-xs text-slate-400 hidden"></span>
-          <button id="audit-btn" onclick="startAudit()"
-            class="px-6 py-2 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white text-sm font-semibold rounded-lg transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-top:12px">
+          <span id="char-cnt" class="caption"></span>
+          <button id="audit-btn" class="btn btn-primary" onclick="startAudit()">
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
             Audit HTML
           </button>
         </div>
       </div>
-
       <!-- URL panel -->
-      <div id="panel-url" class="hidden">
-        <div class="flex gap-2">
+      <div id="panel-url" style="display:none">
+        <div style="display:flex;gap:10px">
           <input id="url-in" type="url" placeholder="https://example.com"
-            class="flex-1 h-10 rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-indigo-300"
+            style="flex:1;height:42px;padding:0 14px;font-size:14px"
             onkeydown="if(event.key==='Enter')startAudit()">
-          <button id="audit-btn-url" onclick="startAudit()"
-            class="px-6 py-2 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white text-sm font-semibold rounded-lg transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed">
-            Audit URL
+          <button id="audit-btn-url" class="btn btn-primary" onclick="startAudit()">
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+            Fetch &amp; Audit
           </button>
         </div>
-        <p class="text-xs text-slate-400 mt-2 flex items-center gap-1">
+        <p class="caption" style="margin-top:10px;display:flex;align-items:center;gap:5px">
           <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
-          HTML is fetched via a CORS proxy (allorigins.win). The page's static HTML is audited; JS-rendered content is not included.
+          Fetched via CORS proxy · static HTML only (no JS-rendered content)
         </p>
       </div>
     </div>
   </div>
 
-  <!-- Loading -->
-  <div id="loading" class="hidden bg-white rounded-2xl border border-slate-200 shadow-sm p-8 text-center">
-    <div class="flex items-center justify-center gap-3 text-slate-500">
-      <svg class="spin" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
-      <span id="load-msg" class="text-sm font-medium">Running audit…</span>
-    </div>
-  </div>
-
-  <!-- Error -->
-  <div id="err-card" class="hidden bg-red-50 border border-red-200 rounded-2xl p-4">
-    <div class="flex items-start gap-3">
-      <svg class="shrink-0 mt-0.5" xmlns="http://www.w3.org/2000/svg" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#dc2626" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="8" y2="12"/><line x1="12" x2="12.01" y1="16" y2="16"/></svg>
-      <div class="flex-1">
-        <p class="text-sm font-semibold text-red-800">Audit failed</p>
-        <p id="err-msg" class="text-xs text-red-700 mt-1 font-mono break-all"></p>
+  <!-- ── Loading ───────────────────────────────────────────────────────── -->
+  <div id="loading" style="display:none;margin-top:12px">
+    <div class="card" style="padding:40px 20px;text-align:center">
+      <div style="display:flex;align-items:center;justify-content:center;gap:10px">
+        <svg class="spin" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
+        <span id="load-msg" style="font-size:14px;font-weight:500;color:var(--text2)">Running audit…</span>
       </div>
-      <button onclick="el('err-card').classList.add('hidden')" class="text-red-300 hover:text-red-500">
-        <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
-      </button>
+      <div class="load-track"><div class="load-bar"></div></div>
     </div>
   </div>
 
-  <!-- Results -->
-  <div id="results" class="hidden space-y-4"></div>
+  <!-- ── Error ─────────────────────────────────────────────────────────── -->
+  <div id="err-card" style="display:none;margin-top:12px">
+    <div style="background:var(--err-bg);border:1px solid var(--err-bdr);border-radius:16px;padding:16px 20px">
+      <div style="display:flex;align-items:flex-start;gap:12px">
+        <svg style="flex-shrink:0;margin-top:1px" xmlns="http://www.w3.org/2000/svg" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="var(--err-t)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="8" y2="12"/><line x1="12" x2="12.01" y1="16" y2="16"/></svg>
+        <div style="flex:1">
+          <p style="font-size:13px;font-weight:600;color:var(--err-t);margin-bottom:4px">Audit failed</p>
+          <pre id="err-msg" style="font-size:11.5px;color:var(--err-t);white-space:pre-wrap;word-break:break-all;font-family:monospace;opacity:.85"></pre>
+        </div>
+        <button onclick="el('err-card').style.display='none'" style="background:none;border:none;cursor:pointer;color:var(--err-t);opacity:.5;padding:0;display:flex">
+          <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+        </button>
+      </div>
+    </div>
+  </div>
 
-</div>
+  <!-- ── Results ───────────────────────────────────────────────────────── -->
+  <div id="results" style="display:none;margin-top:12px"></div>
+
+  <!-- ── Footer ───────────────────────────────────────────────────────── -->
+  <div style="text-align:center;margin-top:52px;padding-top:24px;border-top:1px solid var(--border)">
+    <p class="caption" style="line-height:1.8">
+      Made by <strong style="color:var(--text2)">Sayan Samanta</strong> as a self-learning project &nbsp;·&nbsp;
+      <a href="https://github.com/sayanrup/HTML_Auditor_Agent" target="_blank" rel="noopener noreferrer"
+        style="color:var(--accent);text-decoration:none">View on GitHub</a>
+    </p>
+    <p class="caption" style="margin-top:4px;font-size:10.5px;opacity:.6">HTML Audit Agent · Open source · MIT License</p>
+  </div>
+
+</div><!-- /wrap -->
 <script>
-// ─── tiny DOM helper ───────────────────────────────────────────────────────
+// ──────────────────────────────────────────────────────────────────────────────
+// Helpers
+// ──────────────────────────────────────────────────────────────────────────────
 const el = id => document.getElementById(id);
-
-// ─── shared helpers ────────────────────────────────────────────────────────
 function countTags(h, tag) { return (h.match(new RegExp(`<${tag}\\b`, 'gi')) || []).length; }
 function firstMatch(h, re) { const m = re.exec(h); return m ? m[0].slice(0, 300) : ''; }
 function allMatches(h, re, max = 10) {
-  const out = [], gr = new RegExp(re.source, re.flags.replace(/g/g,'') + 'g'); let m;
+  const out = [], gr = new RegExp(re.source, re.flags.replace(/g/,'') + 'g'); let m;
   while ((m = gr.exec(h)) !== null && out.length < max) out.push(m[0]);
   return out;
 }
-function trunc(s, n = 250) { return s.length > n ? s.slice(0,n) + '…' : s; }
+function trunc(s, n = 250) { return s.length > n ? s.slice(0, n) + '…' : s; }
 function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 function scoreFrom(issues) {
-  const e = issues.filter(i=>i.severity==='error').length;
-  const w = issues.filter(i=>i.severity==='warning').length;
-  const n = issues.filter(i=>i.severity==='info').length;
+  const e = issues.filter(i => i.severity === 'error').length;
+  const w = issues.filter(i => i.severity === 'warning').length;
+  const n = issues.filter(i => i.severity === 'info').length;
   return Math.max(0, Math.min(92, 92 - e*10 - w*4 - n));
 }
-function getHead(h) { return (/<head\b[^>]*>[\s\S]*?<\/head>/i.exec(h)||[''])[0]; }
+function getHead(h) { return (/<head\b[^>]*>[\s\S]*?<\/head>/i.exec(h) || [''])[0]; }
 
-// ─── rule-based checks ─────────────────────────────────────────────────────
+// ──────────────────────────────────────────────────────────────────────────────
+// Theme
+// ──────────────────────────────────────────────────────────────────────────────
+let dark = localStorage.getItem('audit-theme') === 'dark';
+function applyTheme() {
+  document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
+  el('icon-sun').style.display  = dark ? 'block' : 'none';
+  el('icon-moon').style.display = dark ? 'none'  : 'block';
+  localStorage.setItem('audit-theme', dark ? 'dark' : 'light');
+}
+function toggleTheme() { dark = !dark; applyTheme(); }
+applyTheme();
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Rule-based checks
+// ──────────────────────────────────────────────────────────────────────────────
 function checkLlmFriendly(h) {
   const issues = [];
-  const h1 = countTags(h,'h1');
-  if (!h1) issues.push({severity:'error', issue:'Missing <h1> element', recommendation:'Add a single descriptive <h1> summarising the page topic.', snippet: firstMatch(h,/<body\b[^>]*>/)||'<body>'});
-  else if (h1>1) issues.push({severity:'warning', issue:`Multiple <h1> elements (${h1})`, recommendation:'Use exactly one <h1> per page. Demote extras to <h2>–<h6>.', snippet: firstMatch(h,/<h1\b[^>]*>/)||'<h1>'});
-  const hdgs = [...h.matchAll(/<h([1-6])\b[^>]*>/gi)]; let prev=0, sk=0;
-  for (const m of hdgs) { const lvl=parseInt(m[1]); if (prev>0&&lvl>prev+1&&sk<3) { issues.push({severity:'warning',issue:`Heading skipped: <h${prev}> → <h${lvl}>`,recommendation:`Use <h${prev+1}> to keep continuous hierarchy.`,snippet:trunc(m[0])}); sk++; } prev=lvl; }
-  if (!countTags(h,'main')) issues.push({severity:'error',issue:'Missing <main> landmark',recommendation:'Wrap primary content in <main>.',snippet:firstMatch(h,/<body\b[^>]*>/)||'<body>'});
-  if (!countTags(h,'nav')) issues.push({severity:'warning',issue:'No <nav> landmark found',recommendation:'Wrap navigation menus in <nav>.',snippet:'<body>…</body>'});
-  for (const txt of ['click here','read more','learn more','here','details']) {
-    const found = firstMatch(h, new RegExp(`<a\\b[^>]*>\\s*${txt}\\s*<\\/a>`,'i'));
-    if (found) { issues.push({severity:'warning',issue:`Generic link text: "${txt}"`,recommendation:'Replace with descriptive text.',snippet:found}); break; }
+  const h1 = countTags(h, 'h1');
+  if (!h1) issues.push({severity:'error', issue:'Missing <h1> element', recommendation:'Add a single descriptive <h1> summarising the page topic.', snippet: firstMatch(h, /<body\b[^>]*>/) || '<body>'});
+  else if (h1 > 1) issues.push({severity:'warning', issue:`Multiple <h1> elements (${h1})`, recommendation:'Use exactly one <h1> per page. Demote extras to <h2>–<h6>.', snippet: firstMatch(h, /<h1\b[^>]*>/) || '<h1>'});
+  const hdgs = [...h.matchAll(/<h([1-6])\b[^>]*>/gi)]; let prev = 0, sk = 0;
+  for (const m of hdgs) { const lvl = parseInt(m[1]); if (prev > 0 && lvl > prev+1 && sk < 3) { issues.push({severity:'warning', issue:`Heading skipped: <h${prev}> → <h${lvl}>`, recommendation:`Use <h${prev+1}> to keep a continuous hierarchy.`, snippet: trunc(m[0])}); sk++; } prev = lvl; }
+  if (!countTags(h, 'main')) issues.push({severity:'error', issue:'Missing <main> landmark', recommendation:'Wrap primary content in <main>.', snippet: firstMatch(h, /<body\b[^>]*>/) || '<body>'});
+  if (!countTags(h, 'nav'))  issues.push({severity:'warning', issue:'No <nav> landmark found', recommendation:'Wrap navigation menus in <nav>.', snippet: '<body>…</body>'});
+  for (const txt of ['click here','read more','learn more']) {
+    const found = firstMatch(h, new RegExp(`<a\\b[^>]*>\\s*${txt}\\s*<\\/a>`, 'i'));
+    if (found) { issues.push({severity:'warning', issue:`Generic link text: "${txt}"`, recommendation:'Replace with descriptive text that makes sense out of context.', snippet: found}); break; }
   }
-  const noAlt = allMatches(h,/<img\b(?![^>]*\balt\s*=)[^>]*>/gi,5);
-  if (noAlt.length) issues.push({severity:'error',issue:`${noAlt.length} <img> missing alt attribute`,recommendation:'Add descriptive alt text. Use alt="" for decorative images.',snippet:trunc(noAlt[0])});
-  const emptyA = allMatches(h,/<a\b[^>]*>\s*<\/a>/gi,3);
-  if (emptyA.length) issues.push({severity:'error',issue:'Empty <a> with no accessible text',recommendation:'Add descriptive text or aria-label.',snippet:trunc(emptyA[0])});
-  for (const tbl of allMatches(h,/<table\b[\s\S]*?<\/table>/gi,5))
-    if (/<td\b/i.test(tbl)&&!/<th\b/i.test(tbl)&&!/<thead\b/i.test(tbl)) { issues.push({severity:'warning',issue:'Table without <th>/<thead> — layout table?',recommendation:'Use CSS for layout. For data tables add <th scope="col">.',snippet:trunc(tbl,200)}); break; }
-  return {score:scoreFrom(issues),issues};
+  const noAlt = allMatches(h, /<img\b(?![^>]*\balt\s*=)[^>]*>/gi, 5);
+  if (noAlt.length) issues.push({severity:'error', issue:`${noAlt.length} <img> missing alt attribute`, recommendation:'Add descriptive alt text. Use alt="" for purely decorative images.', snippet: trunc(noAlt[0])});
+  const emptyA = allMatches(h, /<a\b[^>]*>\s*<\/a>/gi, 3);
+  if (emptyA.length) issues.push({severity:'error', issue:'Empty <a> with no accessible text', recommendation:'Add descriptive text or aria-label to every link.', snippet: trunc(emptyA[0])});
+  for (const tbl of allMatches(h, /<table\b[\s\S]*?<\/table>/gi, 5))
+    if (/<td\b/i.test(tbl) && !/<th\b/i.test(tbl) && !/<thead\b/i.test(tbl)) { issues.push({severity:'warning', issue:'Table without <th>/<thead> — possibly a layout table', recommendation:'Use CSS for layout. For data tables add <th scope="col">.', snippet: trunc(tbl, 200)}); break; }
+  return {score: scoreFrom(issues), issues};
 }
 
 function checkW3c(h) {
   const issues = [];
   for (const tag of ['font','center','marquee','blink','basefont','big','strike','tt']) {
-    const f = firstMatch(h, new RegExp(`<${tag}\\b[^>]*>`,'i'));
-    if (f) issues.push({severity:'error',issue:`Deprecated <${tag}> element`,recommendation:`Remove <${tag}>. Use CSS or modern semantic HTML.`,snippet:f});
+    const f = firstMatch(h, new RegExp(`<${tag}\\b[^>]*>`, 'i'));
+    if (f) issues.push({severity:'error', issue:`Deprecated <${tag}> element`, recommendation:`Remove <${tag}>. Use CSS or modern semantic HTML instead.`, snippet: f});
   }
-  const nestA = allMatches(h,/<a\b[^>]*>[\s\S]*?<a\b[^>]*>/gi,2);
-  if (nestA.length) issues.push({severity:'error',issue:'Nested <a> inside <a> — invalid HTML',recommendation:'Split into sibling elements.',snippet:trunc(nestA[0],200)});
-  const btnA = allMatches(h,/<a\b[^>]*>[\s\S]*?<button\b[^>]*>/gi,2);
-  if (btnA.length) issues.push({severity:'error',issue:'<button> inside <a> — invalid HTML',recommendation:'Use <a> for navigation or <button> for actions, not both nested.',snippet:trunc(btnA[0],200)});
-  const blockP = allMatches(h,/<p\b[^>]*>[\s\S]*?<(?:div|section|article|ul|ol|table|h[1-6]|blockquote|pre|figure)\b/gi,3);
-  if (blockP.length) issues.push({severity:'error',issue:'Block-level element inside <p>',recommendation:'Close <p> before any block-level element.',snippet:trunc(blockP[0],200)});
-  const noAlt = allMatches(h,/<img\b(?![^>]*\balt\s*=)[^>]*>/gi,5);
-  if (noAlt.length) issues.push({severity:'error',issue:`${noAlt.length} <img> missing required alt`,recommendation:'alt is required on every <img> per the HTML spec.',snippet:trunc(noAlt[0])});
-  const ids = [...h.matchAll(/\bid\s*=\s*["']([^"']+)["']/gi)].map(m=>m[1].toLowerCase());
-  const cnt = {}; for (const id of ids) cnt[id]=(cnt[id]||0)+1;
-  for (const [id,n] of Object.entries(cnt)) if (n>1) { issues.push({severity:'error',issue:`Duplicate id="${id}" (${n}×)`,recommendation:`IDs must be unique per document. Rename all duplicates.`,snippet:`id="${id}"`}); break; }
-  if (countTags(h,'main')>1) issues.push({severity:'error',issue:'Multiple <main> elements — only one allowed',recommendation:'A document must have exactly one <main>.',snippet:firstMatch(h,/<main\b[^>]*>/)||'<main>'});
-  return {score:scoreFrom(issues),issues};
+  const nestA = allMatches(h, /<a\b[^>]*>[\s\S]*?<a\b[^>]*>/gi, 2);
+  if (nestA.length) issues.push({severity:'error', issue:'Nested <a> inside <a> — invalid HTML', recommendation:'Split into sibling elements.', snippet: trunc(nestA[0], 200)});
+  const btnA = allMatches(h, /<a\b[^>]*>[\s\S]*?<button\b[^>]*>/gi, 2);
+  if (btnA.length) issues.push({severity:'error', issue:'<button> inside <a> — invalid HTML', recommendation:'Use <a> for navigation or <button> for actions — never nest them.', snippet: trunc(btnA[0], 200)});
+  const blockP = allMatches(h, /<p\b[^>]*>[\s\S]*?<(?:div|section|article|ul|ol|table|h[1-6]|blockquote|pre|figure)\b/gi, 3);
+  if (blockP.length) issues.push({severity:'error', issue:'Block-level element inside <p>', recommendation:'Close <p> before any block-level element.', snippet: trunc(blockP[0], 200)});
+  const noAlt = allMatches(h, /<img\b(?![^>]*\balt\s*=)[^>]*>/gi, 5);
+  if (noAlt.length) issues.push({severity:'error', issue:`${noAlt.length} <img> missing required alt`, recommendation:'alt is required on every <img> per the HTML spec.', snippet: trunc(noAlt[0])});
+  const ids = [...h.matchAll(/\bid\s*=\s*["']([^"']+)["']/gi)].map(m => m[1].toLowerCase());
+  const cnt = {}; for (const id of ids) cnt[id] = (cnt[id]||0)+1;
+  for (const [id, n] of Object.entries(cnt)) if (n > 1) { issues.push({severity:'error', issue:`Duplicate id="${id}" (${n}×)`, recommendation:'IDs must be unique per document. Rename all duplicates.', snippet: `id="${id}"`}); break; }
+  if (countTags(h, 'main') > 1) issues.push({severity:'error', issue:'Multiple <main> elements — only one allowed', recommendation:'A document must have exactly one <main>.', snippet: firstMatch(h, /<main\b[^>]*>/) || '<main>'});
+  return {score: scoreFrom(issues), issues};
 }
 
 function checkSeo(h) {
   const issues = [];
   const head = getHead(h);
   const titleM = /<title\b[^>]*>([\s\S]*?)<\/title>/i.exec(head);
-  if (!titleM) issues.push({severity:'error',issue:'Missing <title> element',recommendation:'Add a <title> with 50–65 characters.',snippet:'<head>…</head>'});
-  else { const t=titleM[1].replace(/<[^>]+>/g,'').trim(); if(t.length<10) issues.push({severity:'error',issue:`<title> too short (${t.length} chars)`,recommendation:'Write a descriptive 50–65 char title.',snippet:trunc(titleM[0])}); else if(t.length>65) issues.push({severity:'warning',issue:`<title> too long (${t.length} chars)`,recommendation:'Shorten to 50–65 characters.',snippet:trunc(titleM[0])}); }
+  if (!titleM) issues.push({severity:'error', issue:'Missing <title> element', recommendation:'Add a <title> with 50–65 characters.', snippet: '<head>…</head>'});
+  else { const t = titleM[1].replace(/<[^>]+>/g,'').trim(); if (t.length < 10) issues.push({severity:'error', issue:`<title> too short (${t.length} chars)`, recommendation:'Write a descriptive 50–65 char title.', snippet: trunc(titleM[0])}); else if (t.length > 65) issues.push({severity:'warning', issue:`<title> too long (${t.length} chars)`, recommendation:'Shorten to 50–65 characters to avoid truncation in SERPs.', snippet: trunc(titleM[0])}); }
   const descM = /<meta\b[^>]*\bname\s*=\s*["']description["'][^>]*>/i.exec(head);
-  if (!descM) issues.push({severity:'error',issue:'Missing meta description',recommendation:'Add <meta name="description" content="…"> with 150–165 chars.',snippet:'<head>…</head>'});
-  else { const d=(/\bcontent\s*=\s*["']([^"']*)["']/i.exec(descM[0])?.[1]||'').trim(); if(d.length<70) issues.push({severity:'warning',issue:`Meta description too short (${d.length} chars)`,recommendation:'Write 150–165 characters.',snippet:trunc(descM[0])}); else if(d.length>165) issues.push({severity:'info',issue:`Meta description too long (${d.length} chars)`,recommendation:'Trim to 150–165 characters.',snippet:trunc(descM[0])}); }
-  if (!/<link\b[^>]*\brel\s*=\s*["']canonical["'][^>]*>/i.test(head)) issues.push({severity:'warning',issue:'Missing canonical link',recommendation:'Add <link rel="canonical" href="…">.',snippet:'<head>…</head>'});
-  if (!/<meta\b[^>]*\bname\s*=\s*["']viewport["'][^>]*>/i.test(head)) issues.push({severity:'error',issue:'Missing viewport meta tag',recommendation:'Add <meta name="viewport" content="width=device-width, initial-scale=1">.',snippet:'<head>…</head>'});
-  const h1=countTags(h,'h1');
-  if (!h1) issues.push({severity:'error',issue:'Missing <h1> — keyword signal absent',recommendation:'Add one <h1> with the main keyword phrase.',snippet:firstMatch(h,/<body\b[^>]*>/)||'<body>'});
-  else if (h1>1) issues.push({severity:'warning',issue:`Multiple <h1> (${h1}) dilute keyword signal`,recommendation:'Use exactly one <h1>.',snippet:firstMatch(h,/<h1\b[^>]*>/)||'<h1>'});
-  if (!/<script\b[^>]*\btype\s*=\s*["']application\/ld\+json["'][^>]*>/i.test(h)) issues.push({severity:'warning',issue:'No JSON-LD structured data found',recommendation:'Add JSON-LD (Organization, Article, BreadcrumbList, etc.).',snippet:'<head>…</head>'});
-  const noAlt=allMatches(h,/<img\b(?![^>]*\balt\s*=)[^>]*>/gi,3);
-  if (noAlt.length) issues.push({severity:'warning',issue:`${noAlt.length} image(s) missing alt — keyword opportunity lost`,recommendation:'Add keyword-relevant alt text.',snippet:trunc(noAlt[0])});
-  const robotsM=/<meta\b[^>]*\bname\s*=\s*["']robots["'][^>]*>/i.exec(head);
-  if (robotsM&&/noindex/i.test(/\bcontent\s*=\s*["']([^"']*)["']/i.exec(robotsM[0])?.[1]||'')) issues.push({severity:'error',issue:'robots meta noindex detected',recommendation:'Remove noindex if this page should be indexed.',snippet:trunc(robotsM[0])});
-  return {score:scoreFrom(issues),issues};
+  if (!descM) issues.push({severity:'error', issue:'Missing meta description', recommendation:'Add <meta name="description" content="…"> with 150–165 chars.', snippet: '<head>…</head>'});
+  else { const d = (/\bcontent\s*=\s*["']([^"']*)["']/i.exec(descM[0])?.[1]||'').trim(); if (d.length < 70) issues.push({severity:'warning', issue:`Meta description too short (${d.length} chars)`, recommendation:'Write 150–165 characters for best click-through rate.', snippet: trunc(descM[0])}); else if (d.length > 165) issues.push({severity:'info', issue:`Meta description too long (${d.length} chars)`, recommendation:'Trim to 150–165 characters.', snippet: trunc(descM[0])}); }
+  if (!/<link\b[^>]*\brel\s*=\s*["']canonical["'][^>]*>/i.test(head)) issues.push({severity:'warning', issue:'Missing canonical link', recommendation:'Add <link rel="canonical" href="…"> to prevent duplicate-content penalties.', snippet: '<head>…</head>'});
+  if (!/<meta\b[^>]*\bname\s*=\s*["']viewport["'][^>]*>/i.test(head)) issues.push({severity:'error', issue:'Missing viewport meta tag', recommendation:'Add <meta name="viewport" content="width=device-width, initial-scale=1">.', snippet: '<head>…</head>'});
+  const h1 = countTags(h, 'h1');
+  if (!h1) issues.push({severity:'error', issue:'Missing <h1> — primary keyword signal absent', recommendation:'Add one <h1> with the main keyword phrase.', snippet: firstMatch(h, /<body\b[^>]*>/) || '<body>'});
+  else if (h1 > 1) issues.push({severity:'warning', issue:`Multiple <h1> (${h1}) — dilutes keyword signal`, recommendation:'Use exactly one <h1>.', snippet: firstMatch(h, /<h1\b[^>]*>/) || '<h1>'});
+  if (!/<script\b[^>]*\btype\s*=\s*["']application\/ld\+json["'][^>]*>/i.test(h)) issues.push({severity:'warning', issue:'No JSON-LD structured data found', recommendation:'Add JSON-LD markup (Organization, Article, BreadcrumbList, etc.).', snippet: '<head>…</head>'});
+  const noAlt = allMatches(h, /<img\b(?![^>]*\balt\s*=)[^>]*>/gi, 3);
+  if (noAlt.length) issues.push({severity:'warning', issue:`${noAlt.length} image(s) missing alt — keyword opportunity lost`, recommendation:'Add keyword-relevant alt text to all images.', snippet: trunc(noAlt[0])});
+  const robotsM = /<meta\b[^>]*\bname\s*=\s*["']robots["'][^>]*>/i.exec(head);
+  if (robotsM && /noindex/i.test(/\bcontent\s*=\s*["']([^"']*)["']/i.exec(robotsM[0])?.[1]||'')) issues.push({severity:'error', issue:'robots meta noindex detected', recommendation:'Remove noindex if this page should appear in search results.', snippet: trunc(robotsM[0])});
+  return {score: scoreFrom(issues), issues};
 }
 
 function checkSemantic(h) {
   const issues = [];
-  for (const [tag,sev,rec] of [['main','error','Wrap primary content in <main>.'],['header','warning','Wrap the page banner in <header>.'],['footer','warning','Wrap footer content in <footer>.'],['nav','warning','Wrap navigation in <nav>.']]) {
-    if (!countTags(h,tag)) issues.push({severity:sev,issue:`Missing <${tag}> landmark`,recommendation:rec,snippet:firstMatch(h,/<body\b[^>]*>/)||'<body>'});
+  for (const [tag, sev, rec] of [['main','error','Wrap primary content in <main>.'],['header','warning','Wrap the page banner in <header>.'],['footer','warning','Wrap footer content in <footer>.'],['nav','warning','Wrap navigation in <nav>.']]) {
+    if (!countTags(h, tag)) issues.push({severity:sev, issue:`Missing <${tag}> landmark`, recommendation:rec, snippet: firstMatch(h, /<body\b[^>]*>/) || '<body>'});
   }
-  if (countTags(h,'main')>1) issues.push({severity:'error',issue:'Multiple <main> elements found',recommendation:'A document must have exactly one <main>.',snippet:firstMatch(h,/<main\b[^>]*>/)||'<main>'});
-  let secNoH=0;
-  for (const sec of allMatches(h,/<section\b[\s\S]*?<\/section>/gi,10)) if (!/<h[1-6]\b/i.test(sec)) { if(!secNoH) issues.push({severity:'warning',issue:'<section> without a heading',recommendation:'Add an <h2>–<h6> to every <section>.',snippet:trunc(sec,200)}); secNoH++; }
-  if (secNoH>1) issues.push({severity:'info',issue:`${secNoH} <section> elements lack headings`,recommendation:'Every <section> should have a heading.',snippet:'<section>…</section>'});
-  for (const art of allMatches(h,/<article\b[\s\S]*?<\/article>/gi,5)) if (!/<h[1-6]\b/i.test(art)) { issues.push({severity:'warning',issue:'<article> without a heading',recommendation:'Add an <h2>–<h6> to each <article>.',snippet:trunc(art,200)}); break; }
-  for (const m of allMatches(h,/<(?:main|section|article|aside)\b[^>]*>\s*<\/(?:main|section|article|aside)>/gi,3)) issues.push({severity:'error',issue:'Empty semantic container',recommendation:'Remove empty semantic elements or populate them.',snippet:trunc(m)});
-  const divSpan=countTags(h,'div')+countTags(h,'span');
-  const sem=['main','nav','header','footer','section','article','aside','figure'].reduce((s,t)=>s+countTags(h,t),0);
-  if (divSpan>50&&sem<Math.floor(divSpan*0.1)) issues.push({severity:'warning',issue:`Heavy div/span usage: ${divSpan} generic vs ${sem} semantic elements`,recommendation:'Replace div/span wrappers with semantic equivalents.',snippet:'<div>…</div>'});
-  return {score:scoreFrom(issues),issues};
+  if (countTags(h, 'main') > 1) issues.push({severity:'error', issue:'Multiple <main> elements found', recommendation:'A document must have exactly one <main>.', snippet: firstMatch(h, /<main\b[^>]*>/) || '<main>'});
+  let secNoH = 0;
+  for (const sec of allMatches(h, /<section\b[\s\S]*?<\/section>/gi, 10)) if (!/<h[1-6]\b/i.test(sec)) { if (!secNoH) issues.push({severity:'warning', issue:'<section> without a heading', recommendation:'Add an <h2>–<h6> to every <section>.', snippet: trunc(sec, 200)}); secNoH++; }
+  if (secNoH > 1) issues.push({severity:'info', issue:`${secNoH} <section> elements lack headings`, recommendation:'Every <section> should have a heading.', snippet: '<section>…</section>'});
+  for (const art of allMatches(h, /<article\b[\s\S]*?<\/article>/gi, 5)) if (!/<h[1-6]\b/i.test(art)) { issues.push({severity:'warning', issue:'<article> without a heading', recommendation:'Add an <h2>–<h6> to each <article>.', snippet: trunc(art, 200)}); break; }
+  for (const m of allMatches(h, /<(?:main|section|article|aside)\b[^>]*>\s*<\/(?:main|section|article|aside)>/gi, 3)) issues.push({severity:'error', issue:'Empty semantic container', recommendation:'Remove empty semantic elements or populate them with content.', snippet: trunc(m)});
+  const divSpan = countTags(h,'div') + countTags(h,'span');
+  const sem = ['main','nav','header','footer','section','article','aside','figure'].reduce((s,t) => s + countTags(h,t), 0);
+  if (divSpan > 50 && sem < Math.floor(divSpan * 0.1)) issues.push({severity:'warning', issue:`Heavy div/span usage: ${divSpan} generic vs ${sem} semantic`, recommendation:'Replace generic wrappers with semantic equivalents where meaningful.', snippet: '<div>…</div>'});
+  return {score: scoreFrom(issues), issues};
 }
 
 function checkA11y(h) {
   const issues = [];
-  const htmlTag=(/<html\b[^>]*>/i.exec(h)||[''])[0];
-  if (!htmlTag||!/\blang\s*=\s*["'][^"']+["']/i.test(htmlTag)) issues.push({severity:'error',issue:'Missing lang attribute on <html>',recommendation:'Add lang="en" (or correct language code) to <html>.',snippet:trunc(htmlTag||'<html>')});
-  if (!/<title\b[^>]*>[^<]+<\/title>/i.test(h)) issues.push({severity:'error',issue:'Missing or empty document <title>',recommendation:'Add a descriptive, non-empty <title> in <head>.',snippet:'<head>…</head>'});
-  const noAlt=allMatches(h,/<img\b(?![^>]*\balt\s*=)[^>]*>/gi,5);
-  if (noAlt.length) issues.push({severity:'error',issue:`${noAlt.length} <img> missing alt attribute`,recommendation:'Add alt text. Use alt="" for decorative images.',snippet:trunc(noAlt[0])});
-  const labelIds=new Set([...h.matchAll(/<label\b[^>]*\bfor\s*=\s*["']([^"']+)["'][^>]*>/gi)].map(m=>m[1]));
-  let unlbl=0;
-  for (const inp of allMatches(h,/<input\b[^>]*>/gi,30)) {
-    const t=/\btype\s*=\s*["']([^"']*)["']/i.exec(inp)?.[1]?.toLowerCase();
+  const htmlTag = (/<html\b[^>]*>/i.exec(h) || [''])[0];
+  if (!htmlTag || !/\blang\s*=\s*["'][^"']+["']/i.test(htmlTag)) issues.push({severity:'error', issue:'Missing lang attribute on <html>', recommendation:'Add lang="en" (or the correct language code) to <html>.', snippet: trunc(htmlTag || '<html>')});
+  if (!/<title\b[^>]*>[^<]+<\/title>/i.test(h)) issues.push({severity:'error', issue:'Missing or empty document <title>', recommendation:'Add a descriptive, non-empty <title> in <head>.', snippet: '<head>…</head>'});
+  const noAlt = allMatches(h, /<img\b(?![^>]*\balt\s*=)[^>]*>/gi, 5);
+  if (noAlt.length) issues.push({severity:'error', issue:`${noAlt.length} <img> missing alt attribute`, recommendation:'Add alt text. Use alt="" for decorative images.', snippet: trunc(noAlt[0])});
+  const labelIds = new Set([...h.matchAll(/<label\b[^>]*\bfor\s*=\s*["']([^"']+)["'][^>]*>/gi)].map(m => m[1]));
+  let unlbl = 0;
+  for (const inp of allMatches(h, /<input\b[^>]*>/gi, 30)) {
+    const t = /\btype\s*=\s*["']([^"']*)["']/i.exec(inp)?.[1]?.toLowerCase();
     if (['hidden','submit','button','reset','image'].includes(t||'')) continue;
-    const id=/\bid\s*=\s*["']([^"']*)["']/i.exec(inp)?.[1];
-    const aria=/\baria-(?:label|labelledby)\s*=\s*["'][^"']+["']/i.test(inp);
-    if (!aria&&(!id||!labelIds.has(id))) { if(unlbl<3) issues.push({severity:'error',issue:'Form input without associated label',recommendation:'Associate a <label> via for/id, or add aria-label.',snippet:trunc(inp)}); unlbl++; }
+    const id = /\bid\s*=\s*["']([^"']*)["']/i.exec(inp)?.[1];
+    const aria = /\baria-(?:label|labelledby)\s*=\s*["'][^"']+["']/i.test(inp);
+    if (!aria && (!id || !labelIds.has(id))) { if (unlbl < 3) issues.push({severity:'error', issue:'Form input without associated label', recommendation:'Associate a <label> via for/id, or add aria-label.', snippet: trunc(inp)}); unlbl++; }
   }
-  for (const t of allMatches(h,/\btabindex\s*=\s*["'][1-9][0-9]*["']/gi,3).slice(0,2)) issues.push({severity:'warning',issue:'Positive tabindex disrupts focus order',recommendation:'Use tabindex="0" to include; tabindex="-1" to exclude. Avoid positive values.',snippet:trunc(t)});
-  for (const btn of allMatches(h,/<button\b[^>]*>\s*<\/button>/gi,3)) if (!/aria-label\s*=/i.test(btn)) issues.push({severity:'error',issue:'Empty <button> with no accessible name',recommendation:'Add visible text or aria-label to every <button>.',snippet:trunc(btn)});
-  for (const e of allMatches(h,/<(?:a|button|input|select|textarea)\b[^>]*\baria-hidden\s*=\s*["']true["'][^>]*>/gi,2)) issues.push({severity:'error',issue:'Focusable element with aria-hidden="true"',recommendation:'Never hide focusable elements from assistive tech.',snippet:trunc(e)});
-  const tblNoTh=allMatches(h,/<table\b[\s\S]*?<\/table>/gi,5).filter(t=>/<td\b/i.test(t)&&!/<th\b/i.test(t));
-  if (tblNoTh.length) issues.push({severity:'warning',issue:`${tblNoTh.length} table(s) without <th> headers`,recommendation:'Add <th scope="col"> or <th scope="row">.',snippet:trunc(tblNoTh[0],200)});
-  return {score:scoreFrom(issues),issues};
+  for (const t of allMatches(h, /\btabindex\s*=\s*["'][1-9][0-9]*["']/gi, 3).slice(0,2)) issues.push({severity:'warning', issue:'Positive tabindex disrupts natural focus order', recommendation:'Use tabindex="0" to include; tabindex="-1" to exclude. Avoid positive values.', snippet: trunc(t)});
+  for (const btn of allMatches(h, /<button\b[^>]*>\s*<\/button>/gi, 3)) if (!/aria-label\s*=/i.test(btn)) issues.push({severity:'error', issue:'Empty <button> with no accessible name', recommendation:'Add visible text or aria-label to every <button>.', snippet: trunc(btn)});
+  for (const e of allMatches(h, /<(?:a|button|input|select|textarea)\b[^>]*\baria-hidden\s*=\s*["']true["'][^>]*>/gi, 2)) issues.push({severity:'error', issue:'Focusable element with aria-hidden="true"', recommendation:'Never hide focusable elements from assistive technology.', snippet: trunc(e)});
+  const tblNoTh = allMatches(h, /<table\b[\s\S]*?<\/table>/gi, 5).filter(t => /<td\b/i.test(t) && !/<th\b/i.test(t));
+  if (tblNoTh.length) issues.push({severity:'warning', issue:`${tblNoTh.length} table(s) without <th> headers`, recommendation:'Add <th scope="col"> or <th scope="row"> to all data tables.', snippet: trunc(tblNoTh[0], 200)});
+  return {score: scoreFrom(issues), issues};
 }
 
 function ruleBasedAudit(h) {
@@ -292,16 +546,18 @@ function ruleBasedAudit(h) {
   const semanticHtml  = checkSemantic(h);
   const accessibility = checkA11y(h);
   const overallScore  = Math.round((llmFriendly.score+w3cCompliance.score+seo.score+semanticHtml.score+accessibility.score)/5);
-  const bytes         = new TextEncoder().encode(h).length;
-  const rec           = bytes>200000?'HTML exceeds 200 KB — minify and defer non-critical resources.':bytes>100000?'HTML is large — consider reducing markup bloat.':'HTML payload is within acceptable range.';
-  return {overallScore,llmFriendly,w3cCompliance,seo,semanticHtml,accessibility,docSize:{size:bytes,recommendation:rec}};
+  const bytes = new TextEncoder().encode(h).length;
+  const rec   = bytes > 200000 ? 'HTML exceeds 200 KB — minify and defer non-critical resources.' : bytes > 100000 ? 'HTML is large — consider reducing markup bloat.' : 'HTML payload is within acceptable range.';
+  return {overallScore, llmFriendly, w3cCompliance, seo, semanticHtml, accessibility, docSize:{size:bytes, recommendation:rec}};
 }
 
-// ─── AI audit via OpenRouter ────────────────────────────────────────────────
+// ──────────────────────────────────────────────────────────────────────────────
+// AI audit via OpenRouter
+// ──────────────────────────────────────────────────────────────────────────────
 async function aiAudit(h, apiKey, model) {
   const MAX = 80*1024;
   const enc = new TextEncoder();
-  let htmlToSend = enc.encode(h).length > MAX ? h.slice(0,MAX)+'\n<!-- [truncated] -->' : h;
+  const htmlToSend = enc.encode(h).length > MAX ? h.slice(0, MAX) + '\n<!-- [truncated] -->' : h;
 
   const sys = `You are a strict HTML auditor. Inspect the HTML and return ONLY valid JSON (no markdown fences).
 
@@ -325,73 +581,115 @@ Criteria:
 - accessibility: html[lang], <title>, alt on images, labelled inputs, tabindex, empty buttons, aria-hidden on focusable`;
 
   const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-    method:'POST',
-    headers:{'Authorization':`Bearer ${apiKey}`,'Content-Type':'application/json','HTTP-Referer':location.href,'X-Title':'HTML Audit Agent'},
-    body:JSON.stringify({model,messages:[{role:'system',content:sys},{role:'user',content:`Audit this HTML:\n\n${htmlToSend}`}],temperature:0.2,response_format:{type:'json_object'}}),
+    method: 'POST',
+    headers: {'Authorization':`Bearer ${apiKey}`, 'Content-Type':'application/json', 'HTTP-Referer':location.href, 'X-Title':'HTML Audit Agent'},
+    body: JSON.stringify({model, messages:[{role:'system',content:sys},{role:'user',content:`Audit this HTML:\n\n${htmlToSend}`}], temperature:0.2, response_format:{type:'json_object'}}),
   });
-  if (!res.ok) { const t=await res.text(); throw new Error(`OpenRouter ${res.status}: ${t.slice(0,300)}`); }
+  if (!res.ok) { const t = await res.text(); throw new Error(`OpenRouter ${res.status}: ${t.slice(0,300)}`); }
   const data = await res.json();
   const content = data?.choices?.[0]?.message?.content;
   if (!content) throw new Error('OpenRouter returned empty content');
   const p = JSON.parse(content);
   const overallScore = Math.round((p.llmFriendly.score+p.w3cCompliance.score+p.seo.score+p.semanticHtml.score+p.accessibility.score)/5);
   const bytes = enc.encode(h).length;
-  return {overallScore, llmFriendly:p.llmFriendly, w3cCompliance:p.w3cCompliance, seo:p.seo, semanticHtml:p.semanticHtml, accessibility:p.accessibility, docSize:{size:bytes,recommendation:''}};
+  return {overallScore, llmFriendly:p.llmFriendly, w3cCompliance:p.w3cCompliance, seo:p.seo, semanticHtml:p.semanticHtml, accessibility:p.accessibility, docSize:{size:bytes, recommendation:''}};
 }
 
-// ─── UI helpers ─────────────────────────────────────────────────────────────
-let currentTab = 'html'; // 'html' | 'url'
+// ──────────────────────────────────────────────────────────────────────────────
+// URL fetch with multi-proxy fallback
+// ──────────────────────────────────────────────────────────────────────────────
+async function fetchHtmlFromUrl(url) {
+  const proxies = [
+    { name:'corsproxy.io',  proxyUrl:`https://corsproxy.io/?${url}`,                                      extract: async r => r.text() },
+    { name:'allorigins',    proxyUrl:`https://api.allorigins.win/get?url=${encodeURIComponent(url)}`,      extract: async r => { const j = await r.json(); return j.contents || ''; } },
+    { name:'codetabs',      proxyUrl:`https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`, extract: async r => r.text() },
+  ];
+  const errors = [];
+  for (const p of proxies) {
+    const ctrl = new AbortController();
+    const tid  = setTimeout(() => ctrl.abort(), 18000);
+    try {
+      el('load-msg').textContent = `Fetching via ${p.name}…`;
+      const res = await fetch(p.proxyUrl, {signal: ctrl.signal});
+      clearTimeout(tid);
+      if (!res.ok) { errors.push(`${p.name}: HTTP ${res.status}`); continue; }
+      const text = await p.extract(res);
+      if (!text || text.trim().length < 50) { errors.push(`${p.name}: body too short`); continue; }
+      return text;
+    } catch(e) {
+      clearTimeout(tid);
+      errors.push(`${p.name}: ${e.name === 'AbortError' ? 'timed out' : e.message}`);
+    }
+  }
+  throw new Error(`All proxies failed:\n• ${errors.join('\n• ')}\n\nTip: Copy the page source (Ctrl+U) and paste into the "Paste HTML" tab.`);
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Fix-example snippets
+// ──────────────────────────────────────────────────────────────────────────────
+const FIX_MAP = [
+  { re:/missing.*<h1>|<h1>.*absent/i,
+    fix:`<h1>Your Descriptive Page Title</h1>` },
+  { re:/multiple.*<h1>/i,
+    fix:`<!-- Keep only one <h1>, demote extras -->\n<h1>Main Page Title</h1>\n<h2>Secondary Section</h2>` },
+  { re:/missing.*<main>/i,
+    fix:`<body>\n  <header>…</header>\n  <main>\n    <!-- primary page content here -->\n  </main>\n  <footer>…</footer>\n</body>` },
+  { re:/missing.*lang/i,
+    fix:`<html lang="en">` },
+  { re:/missing.*<title>|empty.*<title>/i,
+    fix:`<head>\n  <title>Page Title – Brand Name</title>  <!-- 50–65 chars -->\n</head>` },
+  { re:/<title>.*short|title.*too short/i,
+    fix:`<!-- ✗ Too vague -->\n<title>Home</title>\n\n<!-- ✓ Descriptive & 50–65 chars -->\n<title>HTML Audit Agent – Free Online HTML Quality Checker</title>` },
+  { re:/meta description/i,
+    fix:`<meta name="description"\n  content="A clear, keyword-rich summary of this page. Aim for 150–165 characters to maximise click-through from search results.">` },
+  { re:/canonical/i,
+    fix:`<link rel="canonical" href="https://example.com/this-page">` },
+  { re:/viewport/i,
+    fix:`<meta name="viewport" content="width=device-width, initial-scale=1">` },
+  { re:/json.?ld|structured data/i,
+    fix:`<script type="application/ld+json">\n{\n  "@context": "https://schema.org",\n  "@type": "WebPage",\n  "name": "Page Title",\n  "url": "https://example.com/page",\n  "description": "Short description of the page."\n}\n<\/script>` },
+  { re:/img.*missing.*alt|alt.*missing|img.*alt/i,
+    fix:`<!-- Informative image -->\n<img src="team-photo.jpg" alt="The five-person engineering team at a whiteboard">\n\n<!-- Decorative image (empty alt) -->\n<img src="divider.svg" alt="" role="presentation">` },
+  { re:/form.*input.*label|unlabelled.*input|input.*without.*label/i,
+    fix:`<!-- Method 1: explicit label via for/id -->\n<label for="email">Email address</label>\n<input id="email" type="email" name="email">\n\n<!-- Method 2: aria-label (when no visible label) -->\n<input type="search" aria-label="Search products">` },
+  { re:/generic.*link|empty.*<a>/i,
+    fix:`<!-- ✗ Generic / meaningless -->\n<a href="/blog">Click here</a>\n\n<!-- ✓ Descriptive -->\n<a href="/blog">Read our latest articles</a>` },
+  { re:/empty.*<button>/i,
+    fix:`<!-- ✗ No accessible name -->\n<button><svg>…</svg></button>\n\n<!-- ✓ aria-label describes the action -->\n<button aria-label="Close dialog">\n  <svg aria-hidden="true">…</svg>\n</button>` },
+  { re:/deprecated/i,
+    fix:`<!-- ✗ Deprecated presentational tags -->\n<!-- <font color="red">text</font> -->\n<!-- <center>content</center>    -->\n\n<!-- ✓ Use CSS instead -->\n<p style="color:red">text</p>\n<div style="text-align:center">content</div>` },
+  { re:/positive tabindex|tabindex.*positive/i,
+    fix:`<!-- ✗ Positive tabindex breaks natural order -->\n<!-- <button tabindex="3">Submit</button> -->\n\n<!-- ✓ Use 0 (natural order) or -1 (programmatic focus only) -->\n<button tabindex="0">Submit</button>` },
+  { re:/duplicate id/i,
+    fix:`<!-- ✗ Same ID on multiple elements -->\n<!-- <section id="intro">…</section>\n     <section id="intro">…</section> -->\n\n<!-- ✓ Each ID is unique -->\n<section id="intro">…</section>\n<section id="features">…</section>` },
+  { re:/nested.*<a>|<a>.*inside.*<a>/i,
+    fix:`<!-- ✗ Invalid nested links -->\n<!-- <a href="…"><a href="…">text</a></a> -->\n\n<!-- ✓ Sibling links -->\n<a href="/page1">Page 1</a>\n<a href="/page2">Page 2</a>` },
+  { re:/<section>.*without.*heading|section.*no.*heading|section.*heading/i,
+    fix:`<section>\n  <h2>Section Title</h2>  <!-- required for accessibility -->\n  <p>Content…</p>\n</section>` },
+  { re:/div.*soup|heavy div|generic.*vs.*semantic/i,
+    fix:`<!-- ✗ Div soup -->\n<div class="header">…</div>\n<div class="main">…</div>\n<div class="footer">…</div>\n\n<!-- ✓ Semantic landmarks -->\n<header>…</header>\n<main>…</main>\n<footer>…</footer>` },
+  { re:/aria-hidden.*focusable|focusable.*aria-hidden/i,
+    fix:`<!-- ✗ Hidden from AT but still focusable -->\n<!-- <button aria-hidden="true">…</button> -->\n\n<!-- ✓ Also remove from tab order -->\n<button aria-hidden="true" tabindex="-1">…</button>` },
+];
+
+function getFixSnippet(issueText) {
+  for (const { re, fix } of FIX_MAP) {
+    if (re.test(issueText)) return fix;
+  }
+  return null;
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// UI helpers
+// ──────────────────────────────────────────────────────────────────────────────
+let currentTab = 'html';
 
 function switchTab(tab) {
   currentTab = tab;
-  // panels
-  el('panel-html').classList.toggle('hidden', tab !== 'html');
-  el('panel-url').classList.toggle('hidden',  tab !== 'url');
-  // tab buttons
-  const active   = 'bg-white text-slate-900 shadow-sm';
-  const inactive = 'text-slate-500 hover:text-slate-700';
-  el('tab-html').className = `flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-all ${tab==='html'?active:inactive}`;
-  el('tab-url').className  = `flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-all ${tab==='url'?active:inactive}`;
-}
-
-async function fetchHtmlFromUrl(url) {
-  // Ordered list of CORS proxies — tried in sequence until one works
-  const proxies = [
-    { name: 'corsproxy.io',  build: u => `https://corsproxy.io/?${encodeURIComponent(u)}` },
-    { name: 'allorigins',    build: u => `https://api.allorigins.win/raw?url=${encodeURIComponent(u)}` },
-    { name: 'htmldragon',    build: u => `https://htmldragon.com/proxy?url=${encodeURIComponent(u)}` },
-  ];
-
-  function fetchWithTimeout(proxyUrl, ms) {
-    const ctrl = new AbortController();
-    const id = setTimeout(() => ctrl.abort(), ms);
-    return fetch(proxyUrl, { signal: ctrl.signal }).finally(() => clearTimeout(id));
-  }
-
-  const errors = [];
-  for (const { name, build } of proxies) {
-    try {
-      el('load-msg').textContent = `Fetching page via ${name}…`;
-      const res = await fetchWithTimeout(build(url), 18000);
-      if (!res.ok) { errors.push(`${name}: HTTP ${res.status}`); continue; }
-      const text = await res.text();
-      if (!text.trim()) { errors.push(`${name}: empty response`); continue; }
-      if (/<html|<!doctype/i.test(text.slice(0, 2000))) return text;
-      // allorigins sometimes wraps in JSON
-      try {
-        const j = JSON.parse(text);
-        if (j.contents && /<html|<!doctype/i.test(j.contents.slice(0, 2000))) return j.contents;
-      } catch {}
-      // Might still be valid HTML (SPAs, fragments)
-      if (text.length > 200) return text;
-      errors.push(`${name}: response doesn't look like HTML`);
-    } catch (e) {
-      errors.push(`${name}: ${e.name === 'AbortError' ? 'timed out' : e.message}`);
-    }
-  }
-  throw new Error(
-    `Could not fetch the page through any proxy.\n${errors.join('\n')}\n\nTry pasting the HTML directly instead.`
-  );
+  el('panel-html').style.display = tab === 'html' ? '' : 'none';
+  el('panel-url').style.display  = tab === 'url'  ? '' : 'none';
+  el('tab-html').className = 'tab-btn' + (tab === 'html' ? ' active' : '');
+  el('tab-url').className  = 'tab-btn' + (tab === 'url'  ? ' active' : '');
 }
 
 let keyShown = false;
@@ -404,30 +702,29 @@ function toggleKey() {
 }
 
 function onKeyChange() {
-  const key = el('api-key').value.trim();
-  const has = key.length > 0;
-  el('mode-badge').className = `text-xs px-2 py-0.5 rounded-full font-medium ${has?'bg-indigo-100 text-indigo-700':'bg-slate-100 text-slate-500'}`;
-  el('mode-badge').textContent = has ? 'AI audit enabled' : 'No key — rule-based audit';
+  const has = el('api-key').value.trim().length > 0;
+  el('mode-badge').className = `badge ${has ? 'badge-ai' : 'badge-rule'}`;
+  el('mode-badge').textContent = has ? 'AI audit enabled' : 'No key — rule-based';
   el('model-sel').disabled = !has;
-  el('mode-ind').className = `flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-full border font-medium select-none ${has?'bg-indigo-50 text-indigo-700 border-indigo-200':'bg-slate-100 text-slate-600 border-slate-200'}`;
-  el('mode-ind').innerHTML = has
-    ? `<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8V4H8"/><rect width="16" height="12" x="4" y="8" rx="2"/><path d="M2 14h2"/><path d="M20 14h2"/><path d="M15 13v2"/><path d="M9 13v2"/></svg> AI audit via OpenRouter`
-    : `<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg> Rule-based audit (no AI)`;
+  el('model-sel').style.opacity = has ? '1' : '.45';
+  el('model-sel').style.cursor  = has ? 'pointer' : 'not-allowed';
+  const ind = el('mode-ind');
+  ind.className = `badge ${has ? 'badge-ai' : 'badge-rule'}`;
+  ind.innerHTML = has
+    ? `<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8V4H8"/><rect width="16" height="12" x="4" y="8" rx="2"/><path d="M2 14h2"/><path d="M20 14h2"/><path d="M15 13v2"/><path d="M9 13v2"/></svg> AI via OpenRouter`
+    : `<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg> Rule-based`;
 }
 
 function onHtmlChange() {
   const len = el('html-in').value.length;
-  el('char-cnt').textContent = len.toLocaleString() + ' chars';
-  el('char-cnt').classList.toggle('hidden', len===0);
+  el('char-cnt').textContent = len > 0 ? len.toLocaleString() + ' chars' : '';
 }
 
 async function startAudit() {
   const key   = el('api-key').value.trim();
   const model = el('model-sel').value;
+  let h = '', auditLabel = '';
 
-  // Resolve HTML source
-  let h = '';
-  let auditLabel = '';
   if (currentTab === 'url') {
     const url = el('url-in').value.trim();
     if (!url) { alert('Enter a URL first.'); return; }
@@ -444,109 +741,119 @@ async function startAudit() {
   }
 
   try {
-    await new Promise(r=>setTimeout(r,30));
+    await new Promise(r => setTimeout(r, 30));
     const report = key ? await aiAudit(h, key, model) : ruleBasedAudit(h);
     renderResults(report, !!key, auditLabel);
   } catch(e) {
     showErr(e.message || 'Audit failed');
   } finally {
-    el('loading').classList.add('hidden');
+    el('loading').style.display = 'none';
     el('audit-btn').disabled = false;
     el('audit-btn-url').disabled = false;
   }
 }
 
 function setLoading(msg) {
-  el('loading').classList.remove('hidden');
+  el('loading').style.display = '';
   el('load-msg').textContent = msg;
-  el('results').classList.add('hidden');
-  el('err-card').classList.add('hidden');
+  el('results').style.display = 'none';
+  el('err-card').style.display = 'none';
   el('audit-btn').disabled = true;
   el('audit-btn-url').disabled = true;
 }
-
 function showErr(msg) {
-  el('loading').classList.add('hidden');
+  el('loading').style.display = 'none';
   el('audit-btn').disabled = false;
   el('audit-btn-url').disabled = false;
-  el('err-card').classList.remove('hidden');
+  el('err-card').style.display = '';
   el('err-msg').textContent = msg;
 }
 
-// ─── Results rendering ───────────────────────────────────────────────────────
+// ──────────────────────────────────────────────────────────────────────────────
+// Results rendering
+// ──────────────────────────────────────────────────────────────────────────────
 function scoreColor(s) {
-  if (s>=80) return {bg:'#dcfce7',text:'#166534',ring:'#22c55e',label:'Good'};
-  if (s>=60) return {bg:'#fef9c3',text:'#713f12',ring:'#eab308',label:'Fair'};
-  if (s>=40) return {bg:'#ffedd5',text:'#7c2d12',ring:'#f97316',label:'Needs Work'};
-  return {bg:'#fee2e2',text:'#7f1d1d',ring:'#ef4444',label:'Poor'};
+  if (s >= 80) return {bg:'var(--good-bg)', text:'var(--good-t)', ring:'var(--good-r)', label:'Good',      cls:'good'};
+  if (s >= 60) return {bg:'var(--fair-bg)', text:'var(--fair-t)', ring:'var(--fair-r)', label:'Fair',      cls:'fair'};
+  if (s >= 40) return {bg:'var(--need-bg)', text:'var(--need-t)', ring:'var(--need-r)', label:'Needs Work', cls:'need'};
+  return          {bg:'var(--poor-bg)', text:'var(--poor-t)', ring:'var(--poor-r)', label:'Poor',      cls:'poor'};
 }
 
-function scoreRing(score, size=90) {
-  const c=scoreColor(score), r=(size/2)-7, circ=2*Math.PI*r, dash=(score/100)*circ;
-  return `<svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" class="shrink-0">
-    <circle cx="${size/2}" cy="${size/2}" r="${r}" fill="none" stroke="#e2e8f0" stroke-width="7"/>
+function scoreRing(score, size=80) {
+  const c = scoreColor(score), r = (size/2)-7, circ = 2*Math.PI*r, dash = (score/100)*circ;
+  return `<svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" style="flex-shrink:0">
+    <circle cx="${size/2}" cy="${size/2}" r="${r}" fill="none" stroke-width="7" class="ring-track"/>
     <circle cx="${size/2}" cy="${size/2}" r="${r}" fill="none" stroke="${c.ring}" stroke-width="7"
-      stroke-dasharray="${dash} ${circ}" stroke-linecap="round"
+      stroke-dasharray="${dash} ${circ}" stroke-linecap="round" class="progress"
       transform="rotate(-90 ${size/2} ${size/2})"/>
-    <text x="${size/2}" y="${size/2+1}" text-anchor="middle" dominant-baseline="middle" font-size="15" font-weight="700" fill="${c.text}">${score}</text>
+    <text x="${size/2}" y="${size/2+1}" text-anchor="middle" dominant-baseline="middle"
+      font-size="14" font-weight="800" fill="${c.text}">${score}</text>
   </svg>`;
 }
 
-function sevIcon(sev) {
-  if (sev==='error')   return `<span class="inline-flex items-center justify-center w-4 h-4 rounded-full bg-red-100 shrink-0 mt-0.5"><svg xmlns="http://www.w3.org/2000/svg" width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#dc2626" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></span>`;
-  if (sev==='warning') return `<span class="inline-flex items-center justify-center w-4 h-4 rounded-full bg-yellow-100 shrink-0 mt-0.5"><svg xmlns="http://www.w3.org/2000/svg" width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#b45309" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg></span>`;
-  return `<span class="inline-flex items-center justify-center w-4 h-4 rounded-full bg-blue-100 shrink-0 mt-0.5"><svg xmlns="http://www.w3.org/2000/svg" width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg></span>`;
+function sevBadge(sev) {
+  if (sev === 'error')   return `<span class="badge sev-error"   style="font-size:10px;padding:2px 7px">Error</span>`;
+  if (sev === 'warning') return `<span class="badge sev-warning" style="font-size:10px;padding:2px 7px">Warning</span>`;
+  return                        `<span class="badge sev-info"    style="font-size:10px;padding:2px 7px">Info</span>`;
+}
+
+function sevDot(sev) {
+  const color = sev==='error' ? 'var(--err-t)' : sev==='warning' ? 'var(--wrn-t)' : 'var(--inf-t)';
+  return `<span style="width:8px;height:8px;border-radius:50%;background:${color};flex-shrink:0;margin-top:6px;display:inline-block"></span>`;
 }
 
 function issueRow(iss) {
-  const sev = iss.severity||'info', snip = iss.htmlSnippet||iss.snippet||'';
-  return `<div class="py-3 border-b border-slate-100 last:border-0 first:pt-3">
-    <div class="flex items-start gap-2">
-      ${sevIcon(sev)}
-      <div class="flex-1 min-w-0">
-        <p class="text-sm font-medium text-slate-800 leading-snug">${esc(iss.issue)}</p>
-        <p class="text-xs text-slate-500 mt-0.5 leading-relaxed">${esc(iss.recommendation)}</p>
-        ${snip?`<div class="snippet">${esc(snip)}</div>`:''}
+  const sev  = iss.severity || 'info';
+  const snip = iss.htmlSnippet || iss.snippet || '';
+  return `<div class="issue-row">
+    ${sevDot(sev)}
+    <div style="flex:1;min-width:0">
+      <div style="display:flex;align-items:flex-start;gap:8px;flex-wrap:wrap;margin-bottom:2px">
+        ${sevBadge(sev)}
+        <p style="font-size:13px;font-weight:600;color:var(--text);line-height:1.4;margin:0">${esc(iss.issue)}</p>
       </div>
+      <p style="font-size:12px;color:var(--text2);margin:0;line-height:1.5">${esc(iss.recommendation)}</p>
+      ${snip ? `<div class="snippet">${esc(snip)}</div>` : ''}
     </div>
   </div>`;
 }
 
 const CRIT_META = {
-  llmFriendly:   {label:'LLM-Friendly HTML',      color:'#4f46e5'},
-  w3cCompliance: {label:'W3C Compliance',          color:'#0891b2'},
-  seo:           {label:'SEO',                     color:'#059669'},
-  semanticHtml:  {label:'Semantic HTML',           color:'#d97706'},
-  accessibility: {label:'Accessibility (WCAG 2.1)',color:'#7c3aed'},
+  llmFriendly:   {label:'LLM-Friendly HTML',       icon:'🤖', color:'#4f46e5'},
+  w3cCompliance: {label:'W3C Compliance',           icon:'✅', color:'#0891b2'},
+  seo:           {label:'SEO',                      icon:'🔍', color:'#059669'},
+  semanticHtml:  {label:'Semantic HTML',            icon:'🏷️', color:'#d97706'},
+  accessibility: {label:'Accessibility (WCAG 2.1)', icon:'♿', color:'#7c3aed'},
 };
 
-let openCrits = new Set(['llmFriendly']);
-
-function critCard(key, result, firstOpen) {
-  const {label,color} = CRIT_META[key];
-  const {score,issues} = result;
-  const c = scoreColor(score);
-  const errors   = issues.filter(i=>i.severity==='error').length;
-  const warnings = issues.filter(i=>i.severity==='warning').length;
-  const isOpen   = firstOpen;
-  return `<div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-    <button onclick="toggleCrit('${key}')" class="w-full px-5 py-4 flex items-center gap-4 text-left hover:bg-slate-50 transition-colors">
-      <div class="w-9 h-9 rounded-xl flex items-center justify-center shrink-0" style="background:${c.bg}">
-        <span class="text-base font-bold" style="color:${c.text}">${score}</span>
+function critCard(key, result) {
+  const {label, color} = CRIT_META[key];
+  const {score, issues} = result;
+  const c       = scoreColor(score);
+  const errors  = issues.filter(i => i.severity === 'error').length;
+  const warns   = issues.filter(i => i.severity === 'warning').length;
+  return `<div class="card">
+    <button onclick="toggleCrit('${key}')" style="width:100%;padding:16px 20px;display:flex;align-items:center;gap:14px;text-align:left;background:none;border:none;cursor:pointer;color:inherit;font-family:inherit"
+      onmouseover="this.style.background='var(--bg-2)'" onmouseout="this.style.background='none'">
+      <div style="width:4px;height:32px;border-radius:2px;flex-shrink:0;background:${color};opacity:.7"></div>
+      <div style="width:40px;height:40px;flex-shrink:0;border-radius:10px;display:flex;align-items:center;justify-content:center;background:${c.bg}">
+        <span style="font-size:15px;font-weight:800;color:${c.text}">${score}</span>
       </div>
-      <div class="flex-1 min-w-0">
-        <div class="flex items-center gap-2 flex-wrap gap-y-1">
-          <span class="font-semibold text-sm text-slate-800">${label}</span>
-          ${errors   ? `<span class="text-xs px-1.5 py-0.5 rounded bg-red-100 text-red-700 font-medium">${errors} error${errors>1?'s':''}</span>` : ''}
-          ${warnings ? `<span class="text-xs px-1.5 py-0.5 rounded bg-yellow-100 text-yellow-700 font-medium">${warnings} warning${warnings>1?'s':''}</span>` : ''}
-          ${!issues.length ? `<span class="text-xs px-1.5 py-0.5 rounded bg-green-100 text-green-700 font-medium">No issues</span>` : ''}
+      <div style="flex:1;min-width:0">
+        <div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap">
+          <span style="font-size:13px;font-weight:700;color:var(--text)">${label}</span>
+          ${errors ? `<span class="badge sev-error" style="font-size:10px;padding:1px 7px">${errors} error${errors>1?'s':''}</span>` : ''}
+          ${warns  ? `<span class="badge sev-warning" style="font-size:10px;padding:1px 7px">${warns} warning${warns>1?'s':''}</span>` : ''}
+          ${!issues.length ? `<span class="badge" style="background:var(--good-bg);color:var(--good-t);font-size:10px;padding:1px 7px">No issues</span>` : ''}
         </div>
+        <p style="font-size:11.5px;color:var(--text3);margin-top:2px">${issues.length} issue${issues.length!==1?'s':''} found</p>
       </div>
-      <svg id="chev-${key}" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="shrink-0 chevron${isOpen?' open':''}"><path d="m6 9 6 6 6-6"/></svg>
+      <svg id="chev-${key}" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text3)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="chevron" style="flex-shrink:0"><path d="m6 9 6 6 6-6"/></svg>
     </button>
-    <div id="body-${key}" class="crit-body${isOpen?' open':''}">
-      <div class="border-t border-slate-100 px-5">
-        ${issues.length ? issues.map(issueRow).join('') : '<p class="py-5 text-sm text-slate-400 text-center">No issues found</p>'}
+    <div id="body-${key}" class="crit-body">
+      <hr class="sep">
+      <div style="padding:0 20px">
+        ${issues.length ? issues.map(issueRow).join('') : '<p style="padding:20px 0;font-size:13px;color:var(--text3);text-align:center">No issues found — great job! 🎉</p>'}
       </div>
     </div>
   </div>`;
@@ -558,54 +865,146 @@ function toggleCrit(key) {
   chev.classList.toggle('open', open);
 }
 
-function renderResults(report, isAi, auditLabel) {
-  const {overallScore,llmFriendly,w3cCompliance,seo,semanticHtml,accessibility,docSize} = report;
-  const c = scoreColor(overallScore);
-  const html = `
-    <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 flex items-center gap-6 fade-in">
-      ${scoreRing(overallScore, 96)}
-      <div class="min-w-0">
-        <div class="flex items-center gap-2 flex-wrap mb-1">
-          <span class="text-xl font-bold text-slate-900">Overall Score</span>
-          <span class="text-xs px-2 py-0.5 rounded-full font-semibold" style="background:${c.bg};color:${c.text}">${c.label}</span>
-          ${isAi
-            ? '<span class="text-xs px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700 font-medium">AI audit</span>'
-            : '<span class="text-xs px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 font-medium">Rule-based</span>'}
+// ── Insight summary ───────────────────────────────────────────────────────────
+function buildInsights(report) {
+  const critKeys = ['llmFriendly','w3cCompliance','seo','semanticHtml','accessibility'];
+  // Collect all issues tagged with their criterion
+  const all = [];
+  for (const key of critKeys) {
+    const { issues } = report[key];
+    for (const iss of issues) all.push({...iss, _crit: CRIT_META[key].label});
+  }
+  // Sort: errors first, then warnings, then info
+  const order = {error:0, warning:1, info:2};
+  all.sort((a,b) => (order[a.severity]||2) - (order[b.severity]||2));
+  const top = all.slice(0, 5);
+  if (!top.length) {
+    return `<div class="card" style="margin-bottom:12px">
+      <div class="ch"><span class="label-sm" style="display:flex;align-items:center;gap:7px">
+        <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z"/><path d="m9 12 2 2 4-4"/></svg>
+        Excellent — No critical issues found!
+      </span></div>
+      <div class="cb" style="text-align:center;padding:28px;color:var(--text2);font-size:13px">This HTML is in great shape across all five criteria.</div>
+    </div>`;
+  }
+  const rows = top.map((iss, i) => {
+    const fix = getFixSnippet(iss.issue);
+    return `<div class="insight-item">
+      <div style="display:flex;align-items:flex-start;gap:12px">
+        <div style="width:26px;height:26px;border-radius:50%;background:var(--accent-s);color:var(--accent-t);font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0">${i+1}</div>
+        <div style="flex:1;min-width:0">
+          <div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin-bottom:4px">
+            ${sevBadge(iss.severity)}
+            <span style="font-size:11px;color:var(--text3)">in ${esc(iss._crit)}</span>
+          </div>
+          <p style="font-size:13.5px;font-weight:700;color:var(--text);margin:0 0 3px;line-height:1.35">${esc(iss.issue)}</p>
+          <p style="font-size:12px;color:var(--text2);margin:0;line-height:1.5">${esc(iss.recommendation)}</p>
+          ${fix ? `<div style="margin-top:6px">
+            <span style="font-size:10.5px;font-weight:600;color:var(--accent);text-transform:uppercase;letter-spacing:.5px">Suggested fix</span>
+            <div class="fix-code">${esc(fix)}</div>
+          </div>` : ''}
         </div>
-        ${auditLabel && auditLabel !== 'Pasted HTML'
-          ? `<p class="text-xs font-mono text-slate-400 mb-1 truncate max-w-sm" title="${esc(auditLabel)}">${esc(auditLabel)}</p>`
-          : ''}
-        <p class="text-sm text-slate-500">Average of 5 criteria. Expand each section below to see issues.</p>
-        ${docSize?.recommendation ? `<p class="text-xs text-slate-400 mt-1">${esc(docSize.recommendation)}</p>` : ''}
       </div>
+    </div>`;
+  }).join('');
+
+  return `<div class="card" style="margin-bottom:12px">
+    <div class="ch">
+      <span class="label-sm" style="display:flex;align-items:center;gap:7px">
+        <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 8v4"/><path d="M12 16h.01"/></svg>
+        Top Issues &amp; Suggested Fixes
+      </span>
+      <span class="caption">${top.length} of ${all.length} issue${all.length!==1?'s':''} shown</span>
     </div>
-    ${critCard('llmFriendly',  llmFriendly,  true)}
-    ${critCard('w3cCompliance',w3cCompliance, false)}
-    ${critCard('seo',          seo,           false)}
-    ${critCard('semanticHtml', semanticHtml,  false)}
-    ${critCard('accessibility',accessibility, false)}
-  `;
-  const r = el('results');
-  r.innerHTML = html;
-  r.classList.remove('hidden');
-  r.scrollIntoView({behavior:'smooth',block:'start'});
+    <div class="cb" style="padding-top:0;padding-bottom:0">
+      ${rows}
+    </div>
+  </div>`;
 }
 
-// ─── Persist settings ────────────────────────────────────────────────────────
-const LS_KEY = 'page-audit-agent:llm-settings';
+// ── Score grid ────────────────────────────────────────────────────────────────
+function scoreGrid(report) {
+  const keys = ['llmFriendly','w3cCompliance','seo','semanticHtml','accessibility'];
+  const cells = keys.map(key => {
+    const {score} = report[key];
+    const c = scoreColor(score);
+    const {label} = CRIT_META[key];
+    const shortLabel = label.replace(' (WCAG 2.1)','').replace('LLM-Friendly HTML','LLM-Friendly').replace('W3C Compliance','W3C');
+    return `<div class="score-cell">
+      ${scoreRing(score, 62)}
+      <p style="font-size:10px;font-weight:600;color:var(--text2);margin-top:6px;line-height:1.3">${esc(shortLabel)}</p>
+    </div>`;
+  }).join('');
+  return `<div class="score-grid" style="margin-bottom:12px">${cells}</div>`;
+}
+
+// ── Main render ───────────────────────────────────────────────────────────────
+function renderResults(report, isAi, auditLabel) {
+  const {overallScore, llmFriendly, w3cCompliance, seo, semanticHtml, accessibility, docSize} = report;
+  const c = scoreColor(overallScore);
+  const totalIssues = ['llmFriendly','w3cCompliance','seo','semanticHtml','accessibility']
+    .reduce((n,k) => n + (report[k].issues?.length || 0), 0);
+
+  const html = `
+    <!-- Overall score hero -->
+    <div class="card fade-in" style="margin-bottom:12px">
+      <div style="padding:24px 28px;display:flex;align-items:center;gap:24px;flex-wrap:wrap">
+        <div style="position:relative">
+          ${scoreRing(overallScore, 100)}
+        </div>
+        <div style="flex:1;min-width:200px">
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px">
+            <h2 style="font-size:20px;font-weight:800;color:var(--text);margin:0">Overall Score</h2>
+            <span class="badge badge-${c.cls}" style="font-size:11px">${c.label}</span>
+            ${isAi
+              ? `<span class="badge badge-ai" style="font-size:11px">🤖 AI audit</span>`
+              : `<span class="badge badge-rule" style="font-size:11px">⚙️ Rule-based</span>`}
+          </div>
+          ${auditLabel && auditLabel !== 'Pasted HTML'
+            ? `<p style="font-size:11px;font-family:monospace;color:var(--text3);margin:0 0 6px;word-break:break-all" title="${esc(auditLabel)}">${esc(auditLabel)}</p>`
+            : ''}
+          <p style="font-size:13px;color:var(--text2);margin:0 0 8px">${totalIssues} issue${totalIssues!==1?'s':''} found across 5 criteria — expand any section below for details.</p>
+          ${docSize?.recommendation ? `<p style="font-size:11.5px;color:var(--text3);margin:0">${esc(docSize.recommendation)}</p>` : ''}
+        </div>
+      </div>
+    </div>
+
+    <!-- Score breakdown grid -->
+    ${scoreGrid(report)}
+
+    <!-- Insight summary -->
+    ${buildInsights(report)}
+
+    <!-- Criterion detail cards -->
+    ${critCard('llmFriendly',   llmFriendly)}
+    ${critCard('w3cCompliance', w3cCompliance)}
+    ${critCard('seo',           seo)}
+    ${critCard('semanticHtml',  semanticHtml)}
+    ${critCard('accessibility', accessibility)}
+  `;
+
+  const r = el('results');
+  r.innerHTML = html;
+  r.style.display = '';
+  setTimeout(() => r.scrollIntoView({behavior:'smooth', block:'start'}), 50);
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Persist settings
+// ──────────────────────────────────────────────────────────────────────────────
+const LS_KEY = 'html-audit-agent:llm-settings';
 window.addEventListener('load', () => {
   try {
-    const s = JSON.parse(localStorage.getItem(LS_KEY)||'{}');
+    const s = JSON.parse(localStorage.getItem(LS_KEY) || '{}');
     if (s.llm_api_key) { el('api-key').value = s.llm_api_key; onKeyChange(); }
-    if (s.llm_model) el('model-sel').value = s.llm_model;
+    if (s.llm_model)   el('model-sel').value = s.llm_model;
   } catch {}
 });
-el('api-key').addEventListener('change', () => {
-  try { localStorage.setItem(LS_KEY, JSON.stringify({llm_api_key:el('api-key').value.trim(),llm_model:el('model-sel').value})); } catch {}
-});
-el('model-sel').addEventListener('change', () => {
-  try { localStorage.setItem(LS_KEY, JSON.stringify({llm_api_key:el('api-key').value.trim(),llm_model:el('model-sel').value})); } catch {}
-});
+el('api-key').addEventListener('change', save);
+el('model-sel').addEventListener('change', save);
+function save() {
+  try { localStorage.setItem(LS_KEY, JSON.stringify({llm_api_key: el('api-key').value.trim(), llm_model: el('model-sel').value})); } catch {}
+}
 </script>
 </body>
 </html>
