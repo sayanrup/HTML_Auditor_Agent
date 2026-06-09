@@ -1,0 +1,495 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>HTML Audit Agent</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: system-ui, -apple-system, sans-serif; }
+  .spin { animation: spin 1s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .fade-in { animation: fadeIn 0.35s ease; }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; } }
+  .snippet {
+    font-family: 'Courier New', monospace; font-size: 11px;
+    background: #f1f5f9; border-radius: 6px; padding: 5px 8px;
+    color: #374151; word-break: break-all; white-space: pre-wrap;
+    max-height: 72px; overflow-y: auto; border: 1px solid #e2e8f0; margin-top: 5px;
+  }
+  .crit-body { display: none; }
+  .crit-body.open { display: block; }
+  .chevron { transition: transform 0.2s; }
+  .chevron.open { transform: rotate(180deg); }
+  circle.progress { transition: stroke-dashoffset 0.9s cubic-bezier(.4,0,.2,1); }
+</style>
+</head>
+<body class="bg-gradient-to-br from-slate-50 to-slate-100 min-h-screen py-8 px-4">
+<div class="max-w-4xl mx-auto space-y-4">
+
+  <!-- Header -->
+  <div class="flex items-start gap-4 mb-2">
+    <div class="w-12 h-12 rounded-2xl bg-indigo-600 flex items-center justify-center shrink-0 shadow-lg shadow-indigo-200">
+      <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8V4H8"/><rect width="16" height="12" x="4" y="8" rx="2"/><path d="M2 14h2"/><path d="M20 14h2"/><path d="M15 13v2"/><path d="M9 13v2"/></svg>
+    </div>
+    <div>
+      <h1 class="text-3xl font-bold text-slate-900">HTML Audit Agent</h1>
+      <p class="text-slate-500 mt-0.5 text-sm">Audit any HTML against LLM-friendliness, W3C, SEO, Semantic HTML &amp; Accessibility rules</p>
+    </div>
+  </div>
+
+  <!-- Config card -->
+  <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+    <div class="px-5 py-3.5 border-b border-slate-100 flex items-center justify-between">
+      <div class="flex items-center gap-2 flex-wrap">
+        <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8V4H8"/><rect width="16" height="12" x="4" y="8" rx="2"/><path d="M2 14h2"/><path d="M20 14h2"/><path d="M15 13v2"/><path d="M9 13v2"/></svg>
+        <span class="font-semibold text-sm text-slate-800">OpenRouter Configuration</span>
+        <span id="mode-badge" class="text-xs px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 font-medium">No key — rule-based audit</span>
+      </div>
+      <a href="https://openrouter.ai/keys" target="_blank" rel="noopener noreferrer" class="text-xs text-indigo-500 hover:text-indigo-700 flex items-center gap-1">
+        Get a key
+        <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg>
+      </a>
+    </div>
+    <div class="px-5 py-4 space-y-3">
+      <div class="flex gap-3">
+        <div class="relative flex-1">
+          <input id="api-key" type="password" placeholder="sk-or-v1-… (optional — leave blank for rule-based audit)"
+            class="w-full h-9 rounded-lg border border-slate-200 bg-slate-50 px-3 pr-9 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-indigo-300"
+            oninput="onKeyChange()">
+          <button onclick="toggleKey()" class="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600" aria-label="Toggle visibility">
+            <svg id="eye-svg" xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+          </button>
+        </div>
+        <select id="model-sel" disabled class="h-9 rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-300 disabled:opacity-40 disabled:cursor-not-allowed w-60">
+          <option>openai/gpt-4.1-mini</option>
+          <option>openai/gpt-4.1</option>
+          <option>anthropic/claude-3.5-haiku</option>
+          <option>anthropic/claude-3.7-sonnet</option>
+          <option>google/gemini-2.0-flash-001</option>
+        </select>
+      </div>
+      <p class="text-xs text-slate-400">Leave blank to run a deterministic rule-based audit with no API key or internet required.</p>
+    </div>
+  </div>
+
+  <!-- Input card -->
+  <div class="bg-white rounded-2xl border border-slate-200 shadow-sm">
+    <div class="px-5 py-3.5 border-b border-slate-100 flex items-center gap-2">
+      <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#64748b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+      <span class="font-semibold text-sm text-slate-800">HTML to Audit</span>
+    </div>
+    <div class="p-5">
+      <textarea id="html-in" rows="13" spellcheck="false"
+        placeholder="&lt;!DOCTYPE html&gt;&#10;&lt;html lang=&quot;en&quot;&gt;&#10;  &lt;head&gt;…&lt;/head&gt;&#10;  &lt;body&gt;…&lt;/body&gt;&#10;&lt;/html&gt;"
+        class="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs font-mono text-slate-800 placeholder-slate-300 resize-y focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-indigo-300"
+        oninput="onHtmlChange()"></textarea>
+      <div class="flex items-center justify-between mt-3">
+        <div id="mode-ind" class="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-full bg-slate-100 text-slate-600 border border-slate-200 font-medium select-none">
+          <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+          Rule-based audit (no AI)
+        </div>
+        <div class="flex items-center gap-3">
+          <span id="char-cnt" class="text-xs text-slate-400 hidden"></span>
+          <button id="audit-btn" onclick="startAudit()"
+            class="px-6 py-2 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white text-sm font-semibold rounded-lg transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed">
+            Audit HTML
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Loading -->
+  <div id="loading" class="hidden bg-white rounded-2xl border border-slate-200 shadow-sm p-8 text-center">
+    <div class="flex items-center justify-center gap-3 text-slate-500">
+      <svg class="spin" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
+      <span id="load-msg" class="text-sm font-medium">Running audit…</span>
+    </div>
+  </div>
+
+  <!-- Error -->
+  <div id="err-card" class="hidden bg-red-50 border border-red-200 rounded-2xl p-4">
+    <div class="flex items-start gap-3">
+      <svg class="shrink-0 mt-0.5" xmlns="http://www.w3.org/2000/svg" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#dc2626" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="8" y2="12"/><line x1="12" x2="12.01" y1="16" y2="16"/></svg>
+      <div class="flex-1">
+        <p class="text-sm font-semibold text-red-800">Audit failed</p>
+        <p id="err-msg" class="text-xs text-red-700 mt-1 font-mono break-all"></p>
+      </div>
+      <button onclick="el('err-card').classList.add('hidden')" class="text-red-300 hover:text-red-500">
+        <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+      </button>
+    </div>
+  </div>
+
+  <!-- Results -->
+  <div id="results" class="hidden space-y-4"></div>
+
+</div>
+<script>
+// ─── tiny DOM helper ───────────────────────────────────────────────────────
+const el = id => document.getElementById(id);
+
+// ─── shared helpers ────────────────────────────────────────────────────────
+function countTags(h, tag) { return (h.match(new RegExp(`<${tag}\\b`, 'gi')) || []).length; }
+function firstMatch(h, re) { const m = re.exec(h); return m ? m[0].slice(0, 300) : ''; }
+function allMatches(h, re, max = 10) {
+  const out = [], gr = new RegExp(re.source, re.flags.replace(/g/g,'') + 'g'); let m;
+  while ((m = gr.exec(h)) !== null && out.length < max) out.push(m[0]);
+  return out;
+}
+function trunc(s, n = 250) { return s.length > n ? s.slice(0,n) + '…' : s; }
+function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function scoreFrom(issues) {
+  const e = issues.filter(i=>i.severity==='error').length;
+  const w = issues.filter(i=>i.severity==='warning').length;
+  const n = issues.filter(i=>i.severity==='info').length;
+  return Math.max(0, Math.min(92, 92 - e*10 - w*4 - n));
+}
+function getHead(h) { return (/<head\b[^>]*>[\s\S]*?<\/head>/i.exec(h)||[''])[0]; }
+
+// ─── rule-based checks ─────────────────────────────────────────────────────
+function checkLlmFriendly(h) {
+  const issues = [];
+  const h1 = countTags(h,'h1');
+  if (!h1) issues.push({severity:'error', issue:'Missing <h1> element', recommendation:'Add a single descriptive <h1> summarising the page topic.', snippet: firstMatch(h,/<body\b[^>]*>/)||'<body>'});
+  else if (h1>1) issues.push({severity:'warning', issue:`Multiple <h1> elements (${h1})`, recommendation:'Use exactly one <h1> per page. Demote extras to <h2>–<h6>.', snippet: firstMatch(h,/<h1\b[^>]*>/)||'<h1>'});
+  const hdgs = [...h.matchAll(/<h([1-6])\b[^>]*>/gi)]; let prev=0, sk=0;
+  for (const m of hdgs) { const lvl=parseInt(m[1]); if (prev>0&&lvl>prev+1&&sk<3) { issues.push({severity:'warning',issue:`Heading skipped: <h${prev}> → <h${lvl}>`,recommendation:`Use <h${prev+1}> to keep continuous hierarchy.`,snippet:trunc(m[0])}); sk++; } prev=lvl; }
+  if (!countTags(h,'main')) issues.push({severity:'error',issue:'Missing <main> landmark',recommendation:'Wrap primary content in <main>.',snippet:firstMatch(h,/<body\b[^>]*>/)||'<body>'});
+  if (!countTags(h,'nav')) issues.push({severity:'warning',issue:'No <nav> landmark found',recommendation:'Wrap navigation menus in <nav>.',snippet:'<body>…</body>'});
+  for (const txt of ['click here','read more','learn more','here','details']) {
+    const found = firstMatch(h, new RegExp(`<a\\b[^>]*>\\s*${txt}\\s*<\\/a>`,'i'));
+    if (found) { issues.push({severity:'warning',issue:`Generic link text: "${txt}"`,recommendation:'Replace with descriptive text.',snippet:found}); break; }
+  }
+  const noAlt = allMatches(h,/<img\b(?![^>]*\balt\s*=)[^>]*>/gi,5);
+  if (noAlt.length) issues.push({severity:'error',issue:`${noAlt.length} <img> missing alt attribute`,recommendation:'Add descriptive alt text. Use alt="" for decorative images.',snippet:trunc(noAlt[0])});
+  const emptyA = allMatches(h,/<a\b[^>]*>\s*<\/a>/gi,3);
+  if (emptyA.length) issues.push({severity:'error',issue:'Empty <a> with no accessible text',recommendation:'Add descriptive text or aria-label.',snippet:trunc(emptyA[0])});
+  for (const tbl of allMatches(h,/<table\b[\s\S]*?<\/table>/gi,5))
+    if (/<td\b/i.test(tbl)&&!/<th\b/i.test(tbl)&&!/<thead\b/i.test(tbl)) { issues.push({severity:'warning',issue:'Table without <th>/<thead> — layout table?',recommendation:'Use CSS for layout. For data tables add <th scope="col">.',snippet:trunc(tbl,200)}); break; }
+  return {score:scoreFrom(issues),issues};
+}
+
+function checkW3c(h) {
+  const issues = [];
+  for (const tag of ['font','center','marquee','blink','basefont','big','strike','tt']) {
+    const f = firstMatch(h, new RegExp(`<${tag}\\b[^>]*>`,'i'));
+    if (f) issues.push({severity:'error',issue:`Deprecated <${tag}> element`,recommendation:`Remove <${tag}>. Use CSS or modern semantic HTML.`,snippet:f});
+  }
+  const nestA = allMatches(h,/<a\b[^>]*>[\s\S]*?<a\b[^>]*>/gi,2);
+  if (nestA.length) issues.push({severity:'error',issue:'Nested <a> inside <a> — invalid HTML',recommendation:'Split into sibling elements.',snippet:trunc(nestA[0],200)});
+  const btnA = allMatches(h,/<a\b[^>]*>[\s\S]*?<button\b[^>]*>/gi,2);
+  if (btnA.length) issues.push({severity:'error',issue:'<button> inside <a> — invalid HTML',recommendation:'Use <a> for navigation or <button> for actions, not both nested.',snippet:trunc(btnA[0],200)});
+  const blockP = allMatches(h,/<p\b[^>]*>[\s\S]*?<(?:div|section|article|ul|ol|table|h[1-6]|blockquote|pre|figure)\b/gi,3);
+  if (blockP.length) issues.push({severity:'error',issue:'Block-level element inside <p>',recommendation:'Close <p> before any block-level element.',snippet:trunc(blockP[0],200)});
+  const noAlt = allMatches(h,/<img\b(?![^>]*\balt\s*=)[^>]*>/gi,5);
+  if (noAlt.length) issues.push({severity:'error',issue:`${noAlt.length} <img> missing required alt`,recommendation:'alt is required on every <img> per the HTML spec.',snippet:trunc(noAlt[0])});
+  const ids = [...h.matchAll(/\bid\s*=\s*["']([^"']+)["']/gi)].map(m=>m[1].toLowerCase());
+  const cnt = {}; for (const id of ids) cnt[id]=(cnt[id]||0)+1;
+  for (const [id,n] of Object.entries(cnt)) if (n>1) { issues.push({severity:'error',issue:`Duplicate id="${id}" (${n}×)`,recommendation:`IDs must be unique per document. Rename all duplicates.`,snippet:`id="${id}"`}); break; }
+  if (countTags(h,'main')>1) issues.push({severity:'error',issue:'Multiple <main> elements — only one allowed',recommendation:'A document must have exactly one <main>.',snippet:firstMatch(h,/<main\b[^>]*>/)||'<main>'});
+  return {score:scoreFrom(issues),issues};
+}
+
+function checkSeo(h) {
+  const issues = [];
+  const head = getHead(h);
+  const titleM = /<title\b[^>]*>([\s\S]*?)<\/title>/i.exec(head);
+  if (!titleM) issues.push({severity:'error',issue:'Missing <title> element',recommendation:'Add a <title> with 50–65 characters.',snippet:'<head>…</head>'});
+  else { const t=titleM[1].replace(/<[^>]+>/g,'').trim(); if(t.length<10) issues.push({severity:'error',issue:`<title> too short (${t.length} chars)`,recommendation:'Write a descriptive 50–65 char title.',snippet:trunc(titleM[0])}); else if(t.length>65) issues.push({severity:'warning',issue:`<title> too long (${t.length} chars)`,recommendation:'Shorten to 50–65 characters.',snippet:trunc(titleM[0])}); }
+  const descM = /<meta\b[^>]*\bname\s*=\s*["']description["'][^>]*>/i.exec(head);
+  if (!descM) issues.push({severity:'error',issue:'Missing meta description',recommendation:'Add <meta name="description" content="…"> with 150–165 chars.',snippet:'<head>…</head>'});
+  else { const d=(/\bcontent\s*=\s*["']([^"']*)["']/i.exec(descM[0])?.[1]||'').trim(); if(d.length<70) issues.push({severity:'warning',issue:`Meta description too short (${d.length} chars)`,recommendation:'Write 150–165 characters.',snippet:trunc(descM[0])}); else if(d.length>165) issues.push({severity:'info',issue:`Meta description too long (${d.length} chars)`,recommendation:'Trim to 150–165 characters.',snippet:trunc(descM[0])}); }
+  if (!/<link\b[^>]*\brel\s*=\s*["']canonical["'][^>]*>/i.test(head)) issues.push({severity:'warning',issue:'Missing canonical link',recommendation:'Add <link rel="canonical" href="…">.',snippet:'<head>…</head>'});
+  if (!/<meta\b[^>]*\bname\s*=\s*["']viewport["'][^>]*>/i.test(head)) issues.push({severity:'error',issue:'Missing viewport meta tag',recommendation:'Add <meta name="viewport" content="width=device-width, initial-scale=1">.',snippet:'<head>…</head>'});
+  const h1=countTags(h,'h1');
+  if (!h1) issues.push({severity:'error',issue:'Missing <h1> — keyword signal absent',recommendation:'Add one <h1> with the main keyword phrase.',snippet:firstMatch(h,/<body\b[^>]*>/)||'<body>'});
+  else if (h1>1) issues.push({severity:'warning',issue:`Multiple <h1> (${h1}) dilute keyword signal`,recommendation:'Use exactly one <h1>.',snippet:firstMatch(h,/<h1\b[^>]*>/)||'<h1>'});
+  if (!/<script\b[^>]*\btype\s*=\s*["']application\/ld\+json["'][^>]*>/i.test(h)) issues.push({severity:'warning',issue:'No JSON-LD structured data found',recommendation:'Add JSON-LD (Organization, Article, BreadcrumbList, etc.).',snippet:'<head>…</head>'});
+  const noAlt=allMatches(h,/<img\b(?![^>]*\balt\s*=)[^>]*>/gi,3);
+  if (noAlt.length) issues.push({severity:'warning',issue:`${noAlt.length} image(s) missing alt — keyword opportunity lost`,recommendation:'Add keyword-relevant alt text.',snippet:trunc(noAlt[0])});
+  const robotsM=/<meta\b[^>]*\bname\s*=\s*["']robots["'][^>]*>/i.exec(head);
+  if (robotsM&&/noindex/i.test(/\bcontent\s*=\s*["']([^"']*)["']/i.exec(robotsM[0])?.[1]||'')) issues.push({severity:'error',issue:'robots meta noindex detected',recommendation:'Remove noindex if this page should be indexed.',snippet:trunc(robotsM[0])});
+  return {score:scoreFrom(issues),issues};
+}
+
+function checkSemantic(h) {
+  const issues = [];
+  for (const [tag,sev,rec] of [['main','error','Wrap primary content in <main>.'],['header','warning','Wrap the page banner in <header>.'],['footer','warning','Wrap footer content in <footer>.'],['nav','warning','Wrap navigation in <nav>.']]) {
+    if (!countTags(h,tag)) issues.push({severity:sev,issue:`Missing <${tag}> landmark`,recommendation:rec,snippet:firstMatch(h,/<body\b[^>]*>/)||'<body>'});
+  }
+  if (countTags(h,'main')>1) issues.push({severity:'error',issue:'Multiple <main> elements found',recommendation:'A document must have exactly one <main>.',snippet:firstMatch(h,/<main\b[^>]*>/)||'<main>'});
+  let secNoH=0;
+  for (const sec of allMatches(h,/<section\b[\s\S]*?<\/section>/gi,10)) if (!/<h[1-6]\b/i.test(sec)) { if(!secNoH) issues.push({severity:'warning',issue:'<section> without a heading',recommendation:'Add an <h2>–<h6> to every <section>.',snippet:trunc(sec,200)}); secNoH++; }
+  if (secNoH>1) issues.push({severity:'info',issue:`${secNoH} <section> elements lack headings`,recommendation:'Every <section> should have a heading.',snippet:'<section>…</section>'});
+  for (const art of allMatches(h,/<article\b[\s\S]*?<\/article>/gi,5)) if (!/<h[1-6]\b/i.test(art)) { issues.push({severity:'warning',issue:'<article> without a heading',recommendation:'Add an <h2>–<h6> to each <article>.',snippet:trunc(art,200)}); break; }
+  for (const m of allMatches(h,/<(?:main|section|article|aside)\b[^>]*>\s*<\/(?:main|section|article|aside)>/gi,3)) issues.push({severity:'error',issue:'Empty semantic container',recommendation:'Remove empty semantic elements or populate them.',snippet:trunc(m)});
+  const divSpan=countTags(h,'div')+countTags(h,'span');
+  const sem=['main','nav','header','footer','section','article','aside','figure'].reduce((s,t)=>s+countTags(h,t),0);
+  if (divSpan>50&&sem<Math.floor(divSpan*0.1)) issues.push({severity:'warning',issue:`Heavy div/span usage: ${divSpan} generic vs ${sem} semantic elements`,recommendation:'Replace div/span wrappers with semantic equivalents.',snippet:'<div>…</div>'});
+  return {score:scoreFrom(issues),issues};
+}
+
+function checkA11y(h) {
+  const issues = [];
+  const htmlTag=(/<html\b[^>]*>/i.exec(h)||[''])[0];
+  if (!htmlTag||!/\blang\s*=\s*["'][^"']+["']/i.test(htmlTag)) issues.push({severity:'error',issue:'Missing lang attribute on <html>',recommendation:'Add lang="en" (or correct language code) to <html>.',snippet:trunc(htmlTag||'<html>')});
+  if (!/<title\b[^>]*>[^<]+<\/title>/i.test(h)) issues.push({severity:'error',issue:'Missing or empty document <title>',recommendation:'Add a descriptive, non-empty <title> in <head>.',snippet:'<head>…</head>'});
+  const noAlt=allMatches(h,/<img\b(?![^>]*\balt\s*=)[^>]*>/gi,5);
+  if (noAlt.length) issues.push({severity:'error',issue:`${noAlt.length} <img> missing alt attribute`,recommendation:'Add alt text. Use alt="" for decorative images.',snippet:trunc(noAlt[0])});
+  const labelIds=new Set([...h.matchAll(/<label\b[^>]*\bfor\s*=\s*["']([^"']+)["'][^>]*>/gi)].map(m=>m[1]));
+  let unlbl=0;
+  for (const inp of allMatches(h,/<input\b[^>]*>/gi,30)) {
+    const t=/\btype\s*=\s*["']([^"']*)["']/i.exec(inp)?.[1]?.toLowerCase();
+    if (['hidden','submit','button','reset','image'].includes(t||'')) continue;
+    const id=/\bid\s*=\s*["']([^"']*)["']/i.exec(inp)?.[1];
+    const aria=/\baria-(?:label|labelledby)\s*=\s*["'][^"']+["']/i.test(inp);
+    if (!aria&&(!id||!labelIds.has(id))) { if(unlbl<3) issues.push({severity:'error',issue:'Form input without associated label',recommendation:'Associate a <label> via for/id, or add aria-label.',snippet:trunc(inp)}); unlbl++; }
+  }
+  for (const t of allMatches(h,/\btabindex\s*=\s*["'][1-9][0-9]*["']/gi,3).slice(0,2)) issues.push({severity:'warning',issue:'Positive tabindex disrupts focus order',recommendation:'Use tabindex="0" to include; tabindex="-1" to exclude. Avoid positive values.',snippet:trunc(t)});
+  for (const btn of allMatches(h,/<button\b[^>]*>\s*<\/button>/gi,3)) if (!/aria-label\s*=/i.test(btn)) issues.push({severity:'error',issue:'Empty <button> with no accessible name',recommendation:'Add visible text or aria-label to every <button>.',snippet:trunc(btn)});
+  for (const e of allMatches(h,/<(?:a|button|input|select|textarea)\b[^>]*\baria-hidden\s*=\s*["']true["'][^>]*>/gi,2)) issues.push({severity:'error',issue:'Focusable element with aria-hidden="true"',recommendation:'Never hide focusable elements from assistive tech.',snippet:trunc(e)});
+  const tblNoTh=allMatches(h,/<table\b[\s\S]*?<\/table>/gi,5).filter(t=>/<td\b/i.test(t)&&!/<th\b/i.test(t));
+  if (tblNoTh.length) issues.push({severity:'warning',issue:`${tblNoTh.length} table(s) without <th> headers`,recommendation:'Add <th scope="col"> or <th scope="row">.',snippet:trunc(tblNoTh[0],200)});
+  return {score:scoreFrom(issues),issues};
+}
+
+function ruleBasedAudit(h) {
+  const llmFriendly   = checkLlmFriendly(h);
+  const w3cCompliance = checkW3c(h);
+  const seo           = checkSeo(h);
+  const semanticHtml  = checkSemantic(h);
+  const accessibility = checkA11y(h);
+  const overallScore  = Math.round((llmFriendly.score+w3cCompliance.score+seo.score+semanticHtml.score+accessibility.score)/5);
+  const bytes         = new TextEncoder().encode(h).length;
+  const rec           = bytes>200000?'HTML exceeds 200 KB — minify and defer non-critical resources.':bytes>100000?'HTML is large — consider reducing markup bloat.':'HTML payload is within acceptable range.';
+  return {overallScore,llmFriendly,w3cCompliance,seo,semanticHtml,accessibility,docSize:{size:bytes,recommendation:rec}};
+}
+
+// ─── AI audit via OpenRouter ────────────────────────────────────────────────
+async function aiAudit(h, apiKey, model) {
+  const MAX = 80*1024;
+  const enc = new TextEncoder();
+  let htmlToSend = enc.encode(h).length > MAX ? h.slice(0,MAX)+'\n<!-- [truncated] -->' : h;
+
+  const sys = `You are a strict HTML auditor. Inspect the HTML and return ONLY valid JSON (no markdown fences).
+
+Score each criterion 0–100: 95–100 near-perfect, 80–94 solid, 60–79 typical gaps, 40–59 serious, <40 severe.
+Report only issues you can confirm from the HTML. htmlSnippet must be a verbatim substring from the source.
+
+Return exactly this shape:
+{
+  "llmFriendly":   {"score":0,"issues":[{"severity":"error","issue":"","recommendation":"","htmlSnippet":""}]},
+  "w3cCompliance": {"score":0,"issues":[]},
+  "seo":           {"score":0,"issues":[]},
+  "semanticHtml":  {"score":0,"issues":[]},
+  "accessibility": {"score":0,"issues":[]}
+}
+
+Criteria:
+- llmFriendly: heading hierarchy, landmark coverage, layout tables, deep nesting, JS-only content
+- w3cCompliance: invalid nesting, deprecated tags, nested interactives, duplicate IDs, block inside <p>
+- seo: <title> (50-65 chars), meta description (150-165), canonical, viewport, <h1>, JSON-LD
+- semanticHtml: landmark elements, section/article without heading, div-soup, empty containers
+- accessibility: html[lang], <title>, alt on images, labelled inputs, tabindex, empty buttons, aria-hidden on focusable`;
+
+  const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+    method:'POST',
+    headers:{'Authorization':`Bearer ${apiKey}`,'Content-Type':'application/json','HTTP-Referer':location.href,'X-Title':'HTML Audit Agent'},
+    body:JSON.stringify({model,messages:[{role:'system',content:sys},{role:'user',content:`Audit this HTML:\n\n${htmlToSend}`}],temperature:0.2,response_format:{type:'json_object'}}),
+  });
+  if (!res.ok) { const t=await res.text(); throw new Error(`OpenRouter ${res.status}: ${t.slice(0,300)}`); }
+  const data = await res.json();
+  const content = data?.choices?.[0]?.message?.content;
+  if (!content) throw new Error('OpenRouter returned empty content');
+  const p = JSON.parse(content);
+  const overallScore = Math.round((p.llmFriendly.score+p.w3cCompliance.score+p.seo.score+p.semanticHtml.score+p.accessibility.score)/5);
+  const bytes = enc.encode(h).length;
+  return {overallScore, llmFriendly:p.llmFriendly, w3cCompliance:p.w3cCompliance, seo:p.seo, semanticHtml:p.semanticHtml, accessibility:p.accessibility, docSize:{size:bytes,recommendation:''}};
+}
+
+// ─── UI helpers ─────────────────────────────────────────────────────────────
+let keyShown = false;
+function toggleKey() {
+  keyShown = !keyShown;
+  el('api-key').type = keyShown ? 'text' : 'password';
+  el('eye-svg').innerHTML = keyShown
+    ? '<path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" x2="23" y1="1" y2="23"/>'
+    : '<path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/>';
+}
+
+function onKeyChange() {
+  const key = el('api-key').value.trim();
+  const has = key.length > 0;
+  el('mode-badge').className = `text-xs px-2 py-0.5 rounded-full font-medium ${has?'bg-indigo-100 text-indigo-700':'bg-slate-100 text-slate-500'}`;
+  el('mode-badge').textContent = has ? 'AI audit enabled' : 'No key — rule-based audit';
+  el('model-sel').disabled = !has;
+  el('mode-ind').className = `flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-full border font-medium select-none ${has?'bg-indigo-50 text-indigo-700 border-indigo-200':'bg-slate-100 text-slate-600 border-slate-200'}`;
+  el('mode-ind').innerHTML = has
+    ? `<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8V4H8"/><rect width="16" height="12" x="4" y="8" rx="2"/><path d="M2 14h2"/><path d="M20 14h2"/><path d="M15 13v2"/><path d="M9 13v2"/></svg> AI audit via OpenRouter`
+    : `<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg> Rule-based audit (no AI)`;
+}
+
+function onHtmlChange() {
+  const len = el('html-in').value.length;
+  el('char-cnt').textContent = len.toLocaleString() + ' chars';
+  el('char-cnt').classList.toggle('hidden', len===0);
+}
+
+async function startAudit() {
+  const h = el('html-in').value.trim();
+  const key = el('api-key').value.trim();
+  const model = el('model-sel').value;
+  if (!h) { alert('Paste some HTML first.'); return; }
+  el('loading').classList.remove('hidden');
+  el('load-msg').textContent = key ? 'Running AI audit via OpenRouter…' : 'Running rule-based audit…';
+  el('results').classList.add('hidden');
+  el('err-card').classList.add('hidden');
+  el('audit-btn').disabled = true;
+  try {
+    await new Promise(r=>setTimeout(r,30));
+    const report = key ? await aiAudit(h, key, model) : ruleBasedAudit(h);
+    renderResults(report, !!key);
+  } catch(e) {
+    el('err-card').classList.remove('hidden');
+    el('err-msg').textContent = e.message || 'Audit failed';
+  } finally {
+    el('loading').classList.add('hidden');
+    el('audit-btn').disabled = false;
+  }
+}
+
+// ─── Results rendering ───────────────────────────────────────────────────────
+function scoreColor(s) {
+  if (s>=80) return {bg:'#dcfce7',text:'#166534',ring:'#22c55e',label:'Good'};
+  if (s>=60) return {bg:'#fef9c3',text:'#713f12',ring:'#eab308',label:'Fair'};
+  if (s>=40) return {bg:'#ffedd5',text:'#7c2d12',ring:'#f97316',label:'Needs Work'};
+  return {bg:'#fee2e2',text:'#7f1d1d',ring:'#ef4444',label:'Poor'};
+}
+
+function scoreRing(score, size=90) {
+  const c=scoreColor(score), r=(size/2)-7, circ=2*Math.PI*r, dash=(score/100)*circ;
+  return `<svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" class="shrink-0">
+    <circle cx="${size/2}" cy="${size/2}" r="${r}" fill="none" stroke="#e2e8f0" stroke-width="7"/>
+    <circle cx="${size/2}" cy="${size/2}" r="${r}" fill="none" stroke="${c.ring}" stroke-width="7"
+      stroke-dasharray="${dash} ${circ}" stroke-linecap="round"
+      transform="rotate(-90 ${size/2} ${size/2})"/>
+    <text x="${size/2}" y="${size/2+1}" text-anchor="middle" dominant-baseline="middle" font-size="15" font-weight="700" fill="${c.text}">${score}</text>
+  </svg>`;
+}
+
+function sevIcon(sev) {
+  if (sev==='error')   return `<span class="inline-flex items-center justify-center w-4 h-4 rounded-full bg-red-100 shrink-0 mt-0.5"><svg xmlns="http://www.w3.org/2000/svg" width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#dc2626" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></span>`;
+  if (sev==='warning') return `<span class="inline-flex items-center justify-center w-4 h-4 rounded-full bg-yellow-100 shrink-0 mt-0.5"><svg xmlns="http://www.w3.org/2000/svg" width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#b45309" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg></span>`;
+  return `<span class="inline-flex items-center justify-center w-4 h-4 rounded-full bg-blue-100 shrink-0 mt-0.5"><svg xmlns="http://www.w3.org/2000/svg" width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg></span>`;
+}
+
+function issueRow(iss) {
+  const sev = iss.severity||'info', snip = iss.htmlSnippet||iss.snippet||'';
+  return `<div class="py-3 border-b border-slate-100 last:border-0 first:pt-3">
+    <div class="flex items-start gap-2">
+      ${sevIcon(sev)}
+      <div class="flex-1 min-w-0">
+        <p class="text-sm font-medium text-slate-800 leading-snug">${esc(iss.issue)}</p>
+        <p class="text-xs text-slate-500 mt-0.5 leading-relaxed">${esc(iss.recommendation)}</p>
+        ${snip?`<div class="snippet">${esc(snip)}</div>`:''}
+      </div>
+    </div>
+  </div>`;
+}
+
+const CRIT_META = {
+  llmFriendly:   {label:'LLM-Friendly HTML',      color:'#4f46e5'},
+  w3cCompliance: {label:'W3C Compliance',          color:'#0891b2'},
+  seo:           {label:'SEO',                     color:'#059669'},
+  semanticHtml:  {label:'Semantic HTML',           color:'#d97706'},
+  accessibility: {label:'Accessibility (WCAG 2.1)',color:'#7c3aed'},
+};
+
+let openCrits = new Set(['llmFriendly']);
+
+function critCard(key, result, firstOpen) {
+  const {label,color} = CRIT_META[key];
+  const {score,issues} = result;
+  const c = scoreColor(score);
+  const errors   = issues.filter(i=>i.severity==='error').length;
+  const warnings = issues.filter(i=>i.severity==='warning').length;
+  const isOpen   = firstOpen;
+  return `<div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+    <button onclick="toggleCrit('${key}')" class="w-full px-5 py-4 flex items-center gap-4 text-left hover:bg-slate-50 transition-colors">
+      <div class="w-9 h-9 rounded-xl flex items-center justify-center shrink-0" style="background:${c.bg}">
+        <span class="text-base font-bold" style="color:${c.text}">${score}</span>
+      </div>
+      <div class="flex-1 min-w-0">
+        <div class="flex items-center gap-2 flex-wrap gap-y-1">
+          <span class="font-semibold text-sm text-slate-800">${label}</span>
+          ${errors   ? `<span class="text-xs px-1.5 py-0.5 rounded bg-red-100 text-red-700 font-medium">${errors} error${errors>1?'s':''}</span>` : ''}
+          ${warnings ? `<span class="text-xs px-1.5 py-0.5 rounded bg-yellow-100 text-yellow-700 font-medium">${warnings} warning${warnings>1?'s':''}</span>` : ''}
+          ${!issues.length ? `<span class="text-xs px-1.5 py-0.5 rounded bg-green-100 text-green-700 font-medium">No issues</span>` : ''}
+        </div>
+      </div>
+      <svg id="chev-${key}" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="shrink-0 chevron${isOpen?' open':''}"><path d="m6 9 6 6 6-6"/></svg>
+    </button>
+    <div id="body-${key}" class="crit-body${isOpen?' open':''}">
+      <div class="border-t border-slate-100 px-5">
+        ${issues.length ? issues.map(issueRow).join('') : '<p class="py-5 text-sm text-slate-400 text-center">No issues found</p>'}
+      </div>
+    </div>
+  </div>`;
+}
+
+function toggleCrit(key) {
+  const body = el(`body-${key}`), chev = el(`chev-${key}`);
+  const open = body.classList.toggle('open');
+  chev.classList.toggle('open', open);
+}
+
+function renderResults(report, isAi) {
+  const {overallScore,llmFriendly,w3cCompliance,seo,semanticHtml,accessibility,docSize} = report;
+  const c = scoreColor(overallScore);
+  const html = `
+    <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 flex items-center gap-6 fade-in">
+      ${scoreRing(overallScore, 96)}
+      <div class="min-w-0">
+        <div class="flex items-center gap-2 flex-wrap mb-1">
+          <span class="text-xl font-bold text-slate-900">Overall Score</span>
+          <span class="text-xs px-2 py-0.5 rounded-full font-semibold" style="background:${c.bg};color:${c.text}">${c.label}</span>
+          ${isAi
+            ? '<span class="text-xs px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700 font-medium">AI audit</span>'
+            : '<span class="text-xs px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 font-medium">Rule-based</span>'}
+        </div>
+        <p class="text-sm text-slate-500">Average of 5 criteria. Expand each section below to see issues.</p>
+        ${docSize?.recommendation ? `<p class="text-xs text-slate-400 mt-1">${esc(docSize.recommendation)}</p>` : ''}
+      </div>
+    </div>
+    ${critCard('llmFriendly',  llmFriendly,  true)}
+    ${critCard('w3cCompliance',w3cCompliance, false)}
+    ${critCard('seo',          seo,           false)}
+    ${critCard('semanticHtml', semanticHtml,  false)}
+    ${critCard('accessibility',accessibility, false)}
+  `;
+  const r = el('results');
+  r.innerHTML = html;
+  r.classList.remove('hidden');
+  r.scrollIntoView({behavior:'smooth',block:'start'});
+}
+
+// ─── Persist settings ────────────────────────────────────────────────────────
+const LS_KEY = 'page-audit-agent:llm-settings';
+window.addEventListener('load', () => {
+  try {
+    const s = JSON.parse(localStorage.getItem(LS_KEY)||'{}');
+    if (s.llm_api_key) { el('api-key').value = s.llm_api_key; onKeyChange(); }
+    if (s.llm_model) el('model-sel').value = s.llm_model;
+  } catch {}
+});
+el('api-key').addEventListener('change', () => {
+  try { localStorage.setItem(LS_KEY, JSON.stringify({llm_api_key:el('api-key').value.trim(),llm_model:el('model-sel').value})); } catch {}
+});
+el('model-sel').addEventListener('change', () => {
+  try { localStorage.setItem(LS_KEY, JSON.stringify({llm_api_key:el('api-key').value.trim(),llm_model:el('model-sel').value})); } catch {}
+});
+</script>
+</body>
+</html>
