@@ -355,13 +355,43 @@ function switchTab(tab) {
 }
 
 async function fetchHtmlFromUrl(url) {
-  // Use allorigins to bypass CORS; /raw returns the bare response body
-  const proxy = `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`;
-  const res = await fetch(proxy, { signal: AbortSignal.timeout(20000) });
-  if (!res.ok) throw new Error(`Failed to fetch URL (${res.status}). The site may block proxies.`);
-  const text = await res.text();
-  if (!text.trim()) throw new Error('Fetched page returned empty content.');
-  return text;
+  // Ordered list of CORS proxies — tried in sequence until one works
+  const proxies = [
+    { name: 'corsproxy.io',  build: u => `https://corsproxy.io/?${encodeURIComponent(u)}` },
+    { name: 'allorigins',    build: u => `https://api.allorigins.win/raw?url=${encodeURIComponent(u)}` },
+    { name: 'htmldragon',    build: u => `https://htmldragon.com/proxy?url=${encodeURIComponent(u)}` },
+  ];
+
+  function fetchWithTimeout(proxyUrl, ms) {
+    const ctrl = new AbortController();
+    const id = setTimeout(() => ctrl.abort(), ms);
+    return fetch(proxyUrl, { signal: ctrl.signal }).finally(() => clearTimeout(id));
+  }
+
+  const errors = [];
+  for (const { name, build } of proxies) {
+    try {
+      el('load-msg').textContent = `Fetching page via ${name}…`;
+      const res = await fetchWithTimeout(build(url), 18000);
+      if (!res.ok) { errors.push(`${name}: HTTP ${res.status}`); continue; }
+      const text = await res.text();
+      if (!text.trim()) { errors.push(`${name}: empty response`); continue; }
+      if (/<html|<!doctype/i.test(text.slice(0, 2000))) return text;
+      // allorigins sometimes wraps in JSON
+      try {
+        const j = JSON.parse(text);
+        if (j.contents && /<html|<!doctype/i.test(j.contents.slice(0, 2000))) return j.contents;
+      } catch {}
+      // Might still be valid HTML (SPAs, fragments)
+      if (text.length > 200) return text;
+      errors.push(`${name}: response doesn't look like HTML`);
+    } catch (e) {
+      errors.push(`${name}: ${e.name === 'AbortError' ? 'timed out' : e.message}`);
+    }
+  }
+  throw new Error(
+    `Could not fetch the page through any proxy.\n${errors.join('\n')}\n\nTry pasting the HTML directly instead.`
+  );
 }
 
 let keyShown = false;
